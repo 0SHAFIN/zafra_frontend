@@ -1,15 +1,17 @@
 "use client";
 import Link from "next/link";
 import {ShoppingCart, User} from "lucide-react";
-import { useCart } from "../context/cart-context";
+
 import { useEffect, useState } from "react";
 import CartContainer from "./cartContainer";
+import { getAllCart } from "@/lib/apiCall";
 
 export default function Navbar() {
-    const { state } = useCart();
+
     const [isCartOpen, setIsCartOpen] = useState(false);
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [user, setUser] = useState<any>(null);
+    const [cartItems, setCartItems] = useState<any>(null);
 
     useEffect(() => {
         const token = localStorage.getItem("authToken");
@@ -29,6 +31,12 @@ export default function Navbar() {
             setIsLoggedIn(false);
             setUser(null);
         }
+        const getCartItems = async () => {
+        const cartItems = await getAllCart();
+            setCartItems(cartItems.cartProducts.length);
+            console.log("cartItems", cartItems);
+        }
+        getCartItems();
     }, []);
 
 
@@ -59,9 +67,9 @@ export default function Navbar() {
                     
                     <div className="flex items-center gap-8">
                       <div className="relative">
-                        {state.totalItems > 0 && (
+                        {cartItems > 0 && (
                             <div className="bg-iris text-white text-[10px] rounded-full absolute top-0 -right-2 w-4 h-4 flex items-center justify-center font-bold">
-                                {state.totalItems}
+                                {cartItems}
                             </div>
                         )}
                         <button 

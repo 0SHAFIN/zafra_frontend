@@ -1,9 +1,10 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { User, Mail, Phone, MapPin, Edit3, Save, X, LogOut, ShoppingBag, Heart, Settings, Package, Calendar, DollarSign } from "lucide-react";
+import { User, Mail, Phone, MapPin, Edit3, Save, X, LogOut, ShoppingBag, Heart, Settings, Package, Calendar, DollarSign, CheckCircle, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import axios from "axios";
+import { updateCustomer } from "@/lib/apiCall";
 
 interface CustomerData {
   id: string;
@@ -38,6 +39,13 @@ interface Order {
   deliveryStatus: boolean;
 }
 
+interface Toast {
+  id: string;
+  type: 'success' | 'error' | 'info';
+  message: string;
+  duration?: number;
+}
+
 export default function CustomerProfilePage() {
   const router = useRouter();
   const [customerData, setCustomerData] = useState<CustomerData | null>(null);
@@ -48,6 +56,7 @@ export default function CustomerProfilePage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('profile');
+  const [toasts, setToasts] = useState<Toast[]>([]);
 
   useEffect(() => {
     // Get customer data from localStorage
@@ -125,26 +134,28 @@ export default function CustomerProfilePage() {
 
     setIsSaving(true);
     try {
-      const token = localStorage.getItem("authToken");
-      const response = await fetch(`http://localhost:3000/customer/${customerData.id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify(editData),
-      });
+      const body={
+        customerID: customerData.id,
+        ...editData
+      }
+      console.log("body", body);
+     const response = await updateCustomer(body);
+      
+      console.log("response", response);
 
-      if (response.ok) {
-        const updatedData = await response.json();
+      if (response) {
+        const updatedData = await response;
         setCustomerData(updatedData);
         localStorage.setItem("user", JSON.stringify(updatedData));
         setIsEditing(false);
+        addToast('success', 'Profile updated successfully!');
       } else {
         console.error("Failed to update profile");
+        addToast('error', 'Failed to update profile. Please try again.');
       }
     } catch (error) {
       console.error("Error updating profile:", error);
+      addToast('error', 'Error updating profile. Please try again.');
     } finally {
       setIsSaving(false);
     }
@@ -158,6 +169,22 @@ export default function CustomerProfilePage() {
 
   const handleInputChange = (field: keyof CustomerData, value: string) => {
     setEditData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const addToast = (type: 'success' | 'error' | 'info', message: string, duration = 5000) => {
+    const id = Math.random().toString(36).substr(2, 9);
+    const newToast: Toast = { id, type, message, duration };
+    
+    setToasts(prev => [...prev, newToast]);
+    
+    // Auto remove toast after duration
+    setTimeout(() => {
+      removeToast(id);
+    }, duration);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
   };
 
   const getStatusColor = (status: string) => {
@@ -237,7 +264,7 @@ export default function CustomerProfilePage() {
                 onClick={handleLogout}
                 className="flex items-center gap-2 px-6 py-3 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-all duration-300 hover:scale-105"
               >
-                <LogOut className="w-4 h-4" />
+                 <LogOut className="w-4 h-4" />
                 Sign Out
               </button>
             </div>
@@ -447,9 +474,7 @@ export default function CustomerProfilePage() {
                                   }}
                                 />
                               ) : null}
-                              <div className="w-full h-full flex items-center justify-center text-xl bg-gradient-to-br from-lavender to-periwinkle">
-                                🌸
-                              </div>
+                           
                             </div>
                             <div className="flex-1">
                               <h4 className="font-semibold text-gray-800">{item.perfumeName}</h4>
@@ -534,6 +559,33 @@ export default function CustomerProfilePage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Toast Container */}
+      <div className="fixed top-4 right-4 z-50 space-y-2">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg transform transition-all duration-300 ${
+              toast.type === 'success' 
+                ? 'bg-green-500 text-white' 
+                : toast.type === 'error' 
+                ? 'bg-red-500 text-white' 
+                : 'bg-blue-500 text-white'
+            }`}
+          >
+            {toast.type === 'success' && <CheckCircle className="w-5 h-5" />}
+            {toast.type === 'error' && <AlertCircle className="w-5 h-5" />}
+            {toast.type === 'info' && <AlertCircle className="w-5 h-5" />}
+            <span className="font-medium">{toast.message}</span>
+            <button
+              onClick={() => removeToast(toast.id)}
+              className="ml-2 text-white hover:text-gray-200 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   );

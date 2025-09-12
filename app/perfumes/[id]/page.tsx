@@ -2,9 +2,10 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import axios from "axios";
-import { useCart } from "../../context/cart-context";
+
 import { ShoppingCart, Heart, Truck, Shield, RotateCcw, Minus, Plus, ArrowRight } from "lucide-react";
 import PerfumeCard from "../../component/perfume-card";
+import { getPerfumeById, getAllPerfumes, addToCart } from "@/lib/apiCall";
 
 interface Perfume {
   id: string;
@@ -27,7 +28,7 @@ export default function PerfumeDetailPage() {
   const [quantity, setQuantity] = useState(1);
   const [selectedImage, setSelectedImage] = useState(0);
   const [isWishlisted, setIsWishlisted] = useState(false);
-  const { addToCart } = useCart();
+ 
 
   const images = [
     perfume?.image || "🌸"
@@ -35,17 +36,11 @@ export default function PerfumeDetailPage() {
 
   useEffect(() => {
     const fetchPerfume = async () => {
-      try {
-        setLoading(true);
-        const response = await axios.get(`http://localhost:3000/perfume`);
-        const data = response.data;
-        setPerfume(data.find((p: Perfume) => p.id === perfumeId));
-      } catch (error) {
-        console.error("Error fetching perfume:", error);
-        setPerfume(null);
-      } finally {
-        setLoading(false);
-      }
+      setLoading(true);
+      const response = await getAllPerfumes();
+      console.log("peufume data", response.find((p: Perfume) => p.id === perfumeId));
+      setPerfume(response.find((p: Perfume) => p.id === perfumeId));
+      setLoading(false);
     };
 
     if (perfumeId) {
@@ -53,24 +48,19 @@ export default function PerfumeDetailPage() {
     }
   }, [perfumeId]);
 
+  useEffect(() => {
+    console.log("perfume", perfume);
+  }, [perfume]);
+
   const handleAddToCart = () => {
+    console.log("quantity", quantity);
     if (perfume) {
       for (let i = 0; i < quantity; i++) {
-        addToCart({
-          id: perfume.id,
-          name: perfume.name,
-          brand: perfume.brand,
-          price: perfume.discount ? perfume.price - (perfume.price * perfume.discount / 100) : perfume.price,
-          image: perfume.image,
-          discount: perfume.discount
-        });
+        addToCart(quantity, perfume.price, perfume.id);
       }
     }
   };
 
-  const handleWishlist = () => {
-    setIsWishlisted(!isWishlisted);
-  };
 
   if (loading) {
     return (

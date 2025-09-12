@@ -1,5 +1,6 @@
 "use client";
-import { createContext, useContext, useReducer, ReactNode } from 'react';
+import { createContext, useContext, useReducer, ReactNode, useEffect, useState } from 'react';
+import { addToCart as addToCartApi } from '../../lib/cart-api';
 
 interface CartItem {
   id: string;
@@ -15,90 +16,111 @@ interface CartState {
   items: CartItem[];
   totalItems: number;
   totalPrice: number;
+  isLoading: boolean;
+  error: string | null;
 }
 
 type CartAction = 
-  | { type: 'ADD_TO_CART'; payload: Omit<CartItem, 'quantity'> }
-  | { type: 'REMOVE_FROM_CART'; payload: string }
-  | { type: 'UPDATE_QUANTITY'; payload: { id: string; quantity: number } }
-  | { type: 'CLEAR_CART' };
+  | { type: 'SET_LOADING'; payload: boolean }
+  | { type: 'SET_ERROR'; payload: string | null }
+  | { type: 'SET_CART_ITEMS'; payload: CartItem[] }
+  | { type: 'ADD_TO_CART_SUCCESS'; payload: CartItem[] }
+  | { type: 'REMOVE_FROM_CART_SUCCESS'; payload: CartItem[] }
+  | { type: 'UPDATE_QUANTITY_SUCCESS'; payload: CartItem[] }
+  | { type: 'CLEAR_CART_SUCCESS' };
 
 interface CartContextType {
   state: CartState;
-  addToCart: (item: Omit<CartItem, 'quantity'>) => void;
-  removeFromCart: (id: string) => void;
-  updateQuantity: (id: string, quantity: number) => void;
-  clearCart: () => void;
+  addToCart: (item: Omit<CartItem, 'quantity'>) => Promise<void>;
+  removeFromCart: (id: string) => Promise<void>;
+  updateQuantity: (id: string, quantity: number) => Promise<void>;
+  clearCart: () => Promise<void>;
+  refreshCart: () => Promise<void>;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
+// Helper function to calculate totals from cart items
+const calculateTotals = (items: CartItem[]) => {
+  const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
+  const totalPrice = items.reduce((sum, item) => {
+    const price = item.discount ? item.price * (1 - item.discount / 100) : item.price;
+    return sum + (price * item.quantity);
+  }, 0);
+  return { totalItems, totalPrice };
+};
+
 const cartReducer = (state: CartState, action: CartAction): CartState => {
   switch (action.type) {
-    case 'ADD_TO_CART': {
-      const existingItem = state.items.find(item => item.id === action.payload.id);
-      
-      if (existingItem) {
-        const updatedItems = state.items.map(item =>
-          item.id === action.payload.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
-        );
-        
-        return {
-          ...state,
-          items: updatedItems,
-          totalItems: state.totalItems + 1,
-          totalPrice: state.totalPrice + action.payload.price
-        };
-      }
-      
-      const newItems = [...state.items, { ...action.payload, quantity: 1 }];
+    case 'SET_LOADING':
       return {
         ...state,
-        items: newItems,
-        totalItems: state.totalItems + 1,
-        totalPrice: state.totalPrice + action.payload.price
+        isLoading: action.payload
+      };
+    
+    case 'SET_ERROR':
+      return {
+        ...state,
+        error: action.payload,
+        isLoading: false
+      };
+    
+    case 'SET_CART_ITEMS': {
+      const { totalItems, totalPrice } = calculateTotals(action.payload);
+      return {
+        ...state,
+        items: action.payload,
+        totalItems,
+        totalPrice,
+        isLoading: false,
+        error: null
       };
     }
     
-    case 'REMOVE_FROM_CART': {
-      const itemToRemove = state.items.find(item => item.id === action.payload);
-      if (!itemToRemove) return state;
-      
-      const updatedItems = state.items.filter(item => item.id !== action.payload);
+    case 'ADD_TO_CART_SUCCESS': {
+      const { totalItems, totalPrice } = calculateTotals(action.payload);
       return {
         ...state,
-        items: updatedItems,
-        totalItems: state.totalItems - itemToRemove.quantity,
-        totalPrice: state.totalPrice - (itemToRemove.price * itemToRemove.quantity)
+        items: action.payload,
+        totalItems,
+        totalPrice,
+        isLoading: false,
+        error: null
       };
     }
     
-    case 'UPDATE_QUANTITY': {
-      const item = state.items.find(item => item.id === action.payload.id);
-      if (!item) return state;
-      
-      const quantityDiff = action.payload.quantity - item.quantity;
-      const updatedItems = state.items.map(item =>
-        item.id === action.payload.id
-          ? { ...item, quantity: action.payload.quantity }
-          : item
-      );
-      
+    case 'REMOVE_FROM_CART_SUCCESS': {
+      const { totalItems, totalPrice } = calculateTotals(action.payload);
       return {
         ...state,
-        items: updatedItems,
-        totalItems: state.totalItems + quantityDiff,
-        totalPrice: state.totalPrice + (quantityDiff * item.price)
+        items: action.payload,
+        totalItems,
+        totalPrice,
+        isLoading: false,
+        error: null
       };
     }
     
-    case 'CLEAR_CART':
+    case 'UPDATE_QUANTITY_SUCCESS': {
+      const { totalItems, totalPrice } = calculateTotals(action.payload);
       return {
+        ...state,
+        items: action.payload,
+        totalItems,
+        totalPrice,
+        isLoading: false,
+        error: null
+      };
+    }
+    
+    case 'CLEAR_CART_SUCCESS':
+      return {
+        ...state,
         items: [],
         totalItems: 0,
-        totalPrice: 0
+        totalPrice: 0,
+        isLoading: false,
+        error: null
       };
     
     default:
@@ -110,27 +132,114 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(cartReducer, {
     items: [],
     totalItems: 0,
-    totalPrice: 0
+    totalPrice: 0,
+    isLoading: false,
+    error: null
   });
 
-  const addToCart = (item: Omit<CartItem, 'quantity'>) => {
-    dispatch({ type: 'ADD_TO_CART', payload: item });
-  };
+  // Load cart items on component mount
+  useEffect(() => {
+    // For now, we'll start with an empty cart
+    // You can implement getAllCartItems API later if needed
+    dispatch({ type: 'SET_CART_ITEMS', payload: [] });
+  }, []);
 
-  const removeFromCart = (id: string) => {
-    dispatch({ type: 'REMOVE_FROM_CART', payload: id });
-  };
-
-  const updateQuantity = (id: string, quantity: number) => {
-    if (quantity <= 0) {
-      removeFromCart(id);
-    } else {
-      dispatch({ type: 'UPDATE_QUANTITY', payload: { id, quantity } });
+  const refreshCart = async () => {
+    try {
+      dispatch({ type: 'SET_LOADING', payload: true });
+      // TODO: Implement getAllCartItems API function
+      // const cartItems = await getAllCartItems();
+      dispatch({ type: 'SET_CART_ITEMS', payload: [] });
+    } catch (error) {
+      console.error('Error refreshing cart:', error);
+      dispatch({ 
+        type: 'SET_ERROR', 
+        payload: error instanceof Error ? error.message : 'Failed to load cart items' 
+      });
     }
   };
 
-  const clearCart = () => {
-    dispatch({ type: 'CLEAR_CART' });
+  const addToCart = async (item: Omit<CartItem, 'quantity'>) => {
+    try {
+      dispatch({ type: 'SET_LOADING', payload: true });
+      dispatch({ type: 'SET_ERROR', payload: null });
+      
+      // Call your simplified addToCart API function
+      const response = await addToCartApi(item.id, 1, item.price);
+      
+      // For now, we'll add the item locally since your API doesn't return updated cart items
+      // You can modify this based on what your backend actually returns
+      const newItem: CartItem = { ...item, quantity: 1 };
+      const updatedItems = [...state.items, newItem];
+      
+      dispatch({ type: 'ADD_TO_CART_SUCCESS', payload: updatedItems });
+    } catch (error) {
+      console.error('Error adding to cart:', error);
+      dispatch({ 
+        type: 'SET_ERROR', 
+        payload: error instanceof Error ? error.message : 'Failed to add item to cart' 
+      });
+    }
+  };
+
+  const removeFromCart = async (id: string) => {
+    try {
+      dispatch({ type: 'SET_LOADING', payload: true });
+      dispatch({ type: 'SET_ERROR', payload: null });
+      
+      // Remove item locally for now
+      // TODO: Implement removeFromCart API function
+      const updatedItems = state.items.filter(item => item.id !== id);
+      dispatch({ type: 'REMOVE_FROM_CART_SUCCESS', payload: updatedItems });
+    } catch (error) {
+      console.error('Error removing from cart:', error);
+      dispatch({ 
+        type: 'SET_ERROR', 
+        payload: error instanceof Error ? error.message : 'Failed to remove item from cart' 
+      });
+    }
+  };
+
+  const updateQuantity = async (id: string, quantity: number) => {
+    try {
+      dispatch({ type: 'SET_LOADING', payload: true });
+      dispatch({ type: 'SET_ERROR', payload: null });
+      
+      if (quantity <= 0) {
+        await removeFromCart(id);
+        return;
+      }
+      
+      // Update quantity locally for now
+      // TODO: Implement updateCartItem API function
+      const updatedItems = state.items.map(item =>
+        item.id === id ? { ...item, quantity } : item
+      );
+      dispatch({ type: 'UPDATE_QUANTITY_SUCCESS', payload: updatedItems });
+    } catch (error) {
+      console.error('Error updating quantity:', error);
+      dispatch({ 
+        type: 'SET_ERROR', 
+        payload: error instanceof Error ? error.message : 'Failed to update item quantity' 
+      });
+    }
+  };
+
+  const clearCart = async () => {
+    try {
+      dispatch({ type: 'SET_LOADING', payload: true });
+      dispatch({ type: 'SET_ERROR', payload: null });
+      
+      // Clear cart locally for now
+      // TODO: Implement clearCart API function
+      dispatch({ type: 'CLEAR_CART_SUCCESS' });
+    } catch (error) {
+      console.error('Error clearing cart:', error);
+      dispatch({ 
+        type: 'SET_ERROR', 
+        payload: error instanceof Error ? error.message : 'Failed to clear cart' 
+      });
+    }
   };
 
   return (
@@ -139,7 +248,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
       addToCart,
       removeFromCart,
       updateQuantity,
-      clearCart
+      clearCart,
+      refreshCart
     }}>
       {children}
     </CartContext.Provider>

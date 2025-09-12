@@ -2,7 +2,6 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import PerfumeCard from "../component/perfume-card";
-import { useCart } from "../context/cart-context";
 import { Search, Filter, Grid, List } from "lucide-react";
 
 interface Perfume {
@@ -24,7 +23,6 @@ export default function AllPerfumesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const { addToCart } = useCart();
 
   const categories = [
     { value: "all", label: "All Perfumes" },
@@ -138,14 +136,15 @@ export default function AllPerfumesPage() {
   }, [perfumes, selectedCategory, searchTerm]);
 
   const handleAddToCart = (perfume: Perfume) => {
-    addToCart({
-      id: perfume.id,
-      name: perfume.name,
-      brand: perfume.brand,
-      price: perfume.discount ? perfume.price - (perfume.price * perfume.discount / 100) : perfume.price,
-      image: perfume.image,
-      discount: perfume.discount
-    });
+    console.log(perfume);
+    // addToCart({
+    //   id: perfume.id,
+    //   name: perfume.name,
+    //   brand: perfume.brand,
+    //   price: perfume.discount ? perfume.price - (perfume.price * perfume.discount / 100) : perfume.price,
+    //   image: perfume.image,
+    //   discount: perfume.discount
+    // });
   };
 
   if (loading) {
@@ -248,7 +247,6 @@ export default function AllPerfumesPage() {
               <PerfumeCard
                 key={perfume.id}
                 {...perfume}
-                onAddToCart={() => handleAddToCart(perfume)}
                 className={viewMode === "list" ? "min-w-full" : ""}
               />
             ))}

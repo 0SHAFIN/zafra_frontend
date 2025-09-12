@@ -3,7 +3,7 @@ import Link from "next/link";
 import PerfumeCard from "../../perfume-card";
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { useCart } from "../../../context/cart-context";
+
 
 const featuredPerfumes = [
   {
@@ -65,7 +65,7 @@ const featuredPerfumes = [
 
 export default function FeaturedPerfumes() {
   const [perfumes, setPerfumes] = useState<any[]>([]);
-  const { addToCart } = useCart();
+
 
   const handleAddToCart = (perfume: any) => {
     // Convert API data to cart format
@@ -77,7 +77,6 @@ export default function FeaturedPerfumes() {
       image: perfume.image,
       discount: perfume.discount
     };
-    addToCart(cartItem);
   };
 
   useEffect(() => {

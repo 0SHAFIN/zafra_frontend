@@ -72,6 +72,7 @@ export default function LoginPage() {
         if (result.access_token) {
           console.log("user", result);
           localStorage.setItem("user", JSON.stringify(result.customer));
+          localStorage.setItem("customerId", result.customer.id);
           localStorage.setItem("authToken", result.access_token);
           router.push("/");
         }else{

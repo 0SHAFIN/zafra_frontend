@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import {ShoppingCart} from "lucide-react";
+import { addToCart } from "@/lib/apiCall";
 
 interface PerfumeCardProps {
   id: string;
@@ -12,7 +13,6 @@ interface PerfumeCardProps {
   brand: string;
   stock: number;
   discount?: number;
-  onAddToCart?: (id: string) => void;
   className?: string;
 }
 
@@ -26,11 +26,19 @@ export default function PerfumeCard({
   brand,
   stock,
   discount,
-  onAddToCart,
-  className = ""
+  className = "",
 }: PerfumeCardProps) {
   const discountedPrice = discount ? price - (price * discount / 100) : price;
   const isOutOfStock = stock === 0;
+
+  const handleAddToCart = (e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent Link navigation
+    const totalPrice = price * 1;
+    const quantity = 1;
+    const perfumeId = id;
+    console.log( quantity, totalPrice, perfumeId);
+    addToCart(quantity, totalPrice, perfumeId);
+  };
 
   return (
     <Link href={`/perfumes/${id}`}>
@@ -100,11 +108,10 @@ export default function PerfumeCard({
           </div>
           
           <div className="flex gap-2">
-          
             <button
-              onClick={() => onAddToCart?.(id)}
+              onClick={handleAddToCart}
               disabled={isOutOfStock}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 flex items-center gap-2 ${
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 flex items-center gap-2 cursor-pointer ${
                 isOutOfStock 
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
                   : 'bg-iris text-white hover:bg-opacity-90 hover:scale-105'
