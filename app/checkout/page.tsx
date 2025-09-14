@@ -1,8 +1,18 @@
 "use client";
 import { useState, useEffect } from "react";
 import { getAllCart, createOrder } from "@/lib/apiCall";
-import { CreditCard, MapPin, User, Phone, Mail, ArrowLeft, CheckCircle } from "lucide-react";
+import {
+  CreditCard,
+  MapPin,
+  User,
+  Phone,
+  Mail,
+  ArrowLeft,
+  CheckCircle,
+} from "lucide-react";
 import Link from "next/link";
+import { useAuthCheck } from "@/lib/auth";
+import { useRouter } from "next/navigation";
 
 interface CartItem {
   perfumeName: string;
@@ -24,11 +34,13 @@ interface CheckoutForm {
 }
 
 export default function CheckoutPage() {
+  const router = useRouter();
+  const { isAuthenticated, isLoading } = useAuthCheck();
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingCart, setIsLoadingCart] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderComplete, setOrderComplete] = useState(false);
-  const[customerData, setCustomerData] = useState<any>(null);
+  const [customerData, setCustomerData] = useState<any>(null);
   const [cartId, setCartId] = useState<string | null>(null);
   const [formData, setFormData] = useState<CheckoutForm>({
     name: "",
@@ -38,68 +50,79 @@ export default function CheckoutPage() {
     cardNumber: "",
     expiryDate: "",
     cvv: "",
-    cardName: ""
+    cardName: "",
   });
-useEffect(() => {
-  const userData = localStorage.getItem("user");
-  if (userData) {
-    const parsedData = JSON.parse(userData);
-    console.log("userData", parsedData);
-    setCustomerData(parsedData);
-    
-    // Populate form with customer data from localStorage
-    setFormData(prev => ({
-      ...prev,
-      name: parsedData.fullName || parsedData.firstName || "",
-      email: parsedData.email || "",
-      phone: parsedData.phone || "",
-      address: parsedData.address || ""
-    }));
-  }
-}, []);
-useEffect(() => {
-  console.log("formData",formData);
-}, [formData]);
-  useEffect(() => {
 
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.push("/login");
+      return;
+    }
+  }, [isAuthenticated, isLoading, router]);
+  useEffect(() => {
+    const userData = localStorage.getItem("user");
+    if (userData) {
+      const parsedData = JSON.parse(userData);
+      console.log("userData", parsedData);
+      setCustomerData(parsedData);
+
+      // Populate form with customer data from localStorage
+      setFormData((prev) => ({
+        ...prev,
+        name: parsedData.fullName || parsedData.firstName || "",
+        email: parsedData.email || "",
+        phone: parsedData.phone || "",
+        address: parsedData.address || "",
+      }));
+    }
+  }, []);
+  useEffect(() => {
+    console.log("formData", formData);
+  }, [formData]);
+  useEffect(() => {
     const getCartItems = async () => {
-        setIsLoading(true);
-        
-        try {
-          const response = await getAllCart();
-          console.log("API Response:", response);
-          if (response.cartProducts.length === 0) {
-            setCartItems([]);
-            return;
-          }
-          
-          setCartItems(response.cartProducts);
-          console.log("cartId", response.cartId);
-          setCartId(response.cartId);
-         
-        } catch (error) {
-          console.error("Error fetching cart:", error);
+      setIsLoadingCart(true);
+
+      try {
+        const response = await getAllCart();
+        console.log("API Response:", response);
+        if (response.cartProducts.length === 0) {
           setCartItems([]);
-        } finally {
-          setIsLoading(false);
+          return;
         }
+
+        setCartItems(response.cartProducts);
+        console.log("cartId", response.cartId);
+        setCartId(response.cartId);
+      } catch (error) {
+        console.error("Error fetching cart:", error);
+        setCartItems([]);
+      } finally {
+        setIsLoadingCart(false);
       }
+    };
 
     getCartItems();
   }, []);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >
+  ) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
   };
   const calculateSubtotal = () => {
-    return cartItems.reduce((total, item) => total + (item.perfumePrice * item.perfumeQuantity), 0);
+    return cartItems.reduce(
+      (total, item) => total + item.perfumePrice * item.perfumeQuantity,
+      0
+    );
   };
-
-
 
   const calculateShipping = () => {
     return calculateSubtotal() > 100 ? 0 : 10; // Free shipping over $100
@@ -112,16 +135,16 @@ useEffect(() => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    
+
     try {
       const orderData = {
-          name: formData.name,
-          email: formData.email,
-          phone: formData.phone,
-          address: formData.address
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        address: formData.address,
       };
-      
-      const response = await createOrder(cartId || '',orderData);
+
+      const response = await createOrder(cartId || "", orderData);
       console.log("Order created:", response);
       setOrderComplete(true);
     } catch (error) {
@@ -150,10 +173,14 @@ useEffect(() => {
           <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
             <ArrowLeft className="w-8 h-8 text-gray-400" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Your cart is empty</h2>
-          <p className="text-gray-600 mb-6">Add some items to your cart before checking out.</p>
-          <Link 
-            href="/perfumes" 
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">
+            Your cart is empty
+          </h2>
+          <p className="text-gray-600 mb-6">
+            Add some items to your cart before checking out.
+          </p>
+          <Link
+            href="/perfumes"
             className="bg-iris text-white px-6 py-3 rounded-lg font-semibold hover:bg-opacity-90 transition-colors"
           >
             Continue Shopping
@@ -170,17 +197,22 @@ useEffect(() => {
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <CheckCircle className="w-8 h-8 text-green-600" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Order Confirmed!</h2>
-          <p className="text-gray-600 mb-6">Thank you for your purchase. You will receive a confirmation email shortly.</p>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">
+            Order Confirmed!
+          </h2>
+          <p className="text-gray-600 mb-6">
+            Thank you for your purchase. You will receive a confirmation email
+            shortly.
+          </p>
           <div className="space-y-3">
-            <Link 
-              href="/perfumes" 
+            <Link
+              href="/perfumes"
               className="w-full bg-iris text-white py-3 px-6 rounded-lg font-semibold hover:bg-opacity-90 transition-colors block"
             >
               Continue Shopping
             </Link>
-            <Link 
-              href="/profile" 
+            <Link
+              href="/profile"
               className="w-full bg-gray-200 text-gray-800 py-3 px-6 rounded-lg font-semibold hover:bg-gray-300 transition-colors block"
             >
               View Orders
@@ -196,8 +228,8 @@ useEffect(() => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
-          <Link 
-            href="/" 
+          <Link
+            href="/"
             className="inline-flex items-center text-iris hover:text-opacity-80 mb-4"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -218,7 +250,9 @@ useEffect(() => {
                 </h2>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Full Name
+                    </label>
                     <input
                       type="text"
                       name="name"
@@ -230,7 +264,9 @@ useEffect(() => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Email
+                    </label>
                     <input
                       type="email"
                       name="email"
@@ -242,7 +278,9 @@ useEffect(() => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Phone
+                    </label>
                     <input
                       type="tel"
                       name="phone"
@@ -254,7 +292,9 @@ useEffect(() => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Address
+                    </label>
                     <textarea
                       name="address"
                       value={formData.address}
@@ -268,37 +308,43 @@ useEffect(() => {
                 </div>
               </div>
 
-
-
               <button
                 type="submit"
                 disabled={isSubmitting}
                 className="w-full bg-iris text-white py-3 px-6 rounded-lg font-semibold hover:bg-opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isSubmitting ? "Processing Order..." : `Place Order - $${calculateTotal().toFixed(2)}`}
+                {isSubmitting
+                  ? "Processing Order..."
+                  : `Place Order - $${calculateTotal().toFixed(2)}`}
               </button>
             </form>
           </div>
 
           {/* Order Summary */}
           <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Order Summary</h2>
-            
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">
+              Order Summary
+            </h2>
+
             {/* Cart Items */}
             <div className="space-y-3 mb-6">
               {cartItems.map((item, index) => (
                 <div key={index} className="flex items-center gap-3">
                   <div className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden">
-                    <img 
-                      src={item.perfumeImage} 
+                    <img
+                      src={item.perfumeImage}
                       alt={item.perfumeName}
                       className="w-full h-full object-cover"
                     />
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-sm font-medium text-gray-900">{item.perfumeName}</h3>
+                    <h3 className="text-sm font-medium text-gray-900">
+                      {item.perfumeName}
+                    </h3>
                     <p className="text-xs text-gray-500">{item.perfumeBrand}</p>
-                    <p className="text-xs text-gray-600">Qty: {item.perfumeQuantity}</p>
+                    <p className="text-xs text-gray-600">
+                      Qty: {item.perfumeQuantity}
+                    </p>
                   </div>
                   <p className="text-sm font-semibold text-gray-900">
                     ${(item.perfumePrice * item.perfumeQuantity).toFixed(2)}
@@ -311,18 +357,24 @@ useEffect(() => {
             <div className="border-t border-gray-200 pt-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Subtotal</span>
-                <span className="text-gray-900">${calculateSubtotal().toFixed(2)}</span>
+                <span className="text-gray-900">
+                  ${calculateSubtotal().toFixed(2)}
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Shipping</span>
                 <span className="text-gray-900">
-                  {calculateShipping() === 0 ? "Free" : `$${calculateShipping().toFixed(2)}`}
+                  {calculateShipping() === 0
+                    ? "Free"
+                    : `$${calculateShipping().toFixed(2)}`}
                 </span>
               </div>
 
               <div className="flex justify-between text-lg font-semibold border-t border-gray-200 pt-2">
                 <span className="text-gray-900">Total</span>
-                <span className="text-iris">${calculateTotal().toFixed(2)}</span>
+                <span className="text-iris">
+                  ${calculateTotal().toFixed(2)}
+                </span>
               </div>
             </div>
 
@@ -330,7 +382,9 @@ useEffect(() => {
             <div className="mt-6 p-4 bg-green-50 rounded-lg">
               <div className="flex items-center">
                 <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
-                <span className="text-sm text-green-800 font-medium">Secure Checkout</span>
+                <span className="text-sm text-green-800 font-medium">
+                  Secure Checkout
+                </span>
               </div>
               <p className="text-xs text-green-700 mt-1">
                 Your payment information is encrypted and secure.

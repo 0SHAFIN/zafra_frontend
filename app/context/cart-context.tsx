@@ -1,6 +1,5 @@
 "use client";
 import { createContext, useContext, useReducer, ReactNode, useEffect, useState } from 'react';
-import { addToCart as addToCartApi } from '../../lib/cart-api';
 
 interface CartItem {
   id: string;
@@ -160,17 +159,28 @@ export function CartProvider({ children }: { children: ReactNode }) {
   };
 
   const addToCart = async (item: Omit<CartItem, 'quantity'>) => {
+  const addToCart = async (item: Omit<CartItem, 'quantity'>) => {
     try {
       dispatch({ type: 'SET_LOADING', payload: true });
       dispatch({ type: 'SET_ERROR', payload: null });
       
-      // Call your simplified addToCart API function
-      const response = await addToCartApi(item.id, 1, item.price);
+      // Add the item locally for now
+      // TODO: Implement addToCart API function when available
+      const existingItem = state.items.find(cartItem => cartItem.id === item.id);
+      let updatedItems: CartItem[];
       
-      // For now, we'll add the item locally since your API doesn't return updated cart items
-      // You can modify this based on what your backend actually returns
-      const newItem: CartItem = { ...item, quantity: 1 };
-      const updatedItems = [...state.items, newItem];
+      if (existingItem) {
+        // If item exists, increase quantity
+        updatedItems = state.items.map(cartItem =>
+          cartItem.id === item.id 
+            ? { ...cartItem, quantity: cartItem.quantity + 1 }
+            : cartItem
+        );
+      } else {
+        // If item doesn't exist, add new item
+        const newItem: CartItem = { ...item, quantity: 1 };
+        updatedItems = [...state.items, newItem];
+      }
       
       dispatch({ type: 'ADD_TO_CART_SUCCESS', payload: updatedItems });
     } catch (error) {
@@ -181,7 +191,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
       });
     }
   };
-
   const removeFromCart = async (id: string) => {
     try {
       dispatch({ type: 'SET_LOADING', payload: true });

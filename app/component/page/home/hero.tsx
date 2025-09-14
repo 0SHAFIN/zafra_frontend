@@ -19,12 +19,7 @@ export default function Hero() {
                     >
                         Explore Collection
                     </Link>
-                    <Link 
-                        href="/quiz" 
-                        className="border-2 border-iris text-iris px-8 py-4 rounded-full text-lg font-semibold hover:bg-iris hover:text-white transition-all duration-300"
-                    >
-                        Find My Scent
-                    </Link>
+                
                 </div>
             </div>
             
