@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { Eye, EyeOff, User, Phone, Mail, MapPin, Lock, ArrowRight, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { signupSchema, type SignupFormData } from "@/lib/validation";
-
+import { signup } from "@/lib/apiCall";
 // Zod schema for signup validati
 
 
@@ -48,36 +48,30 @@ export default function SignupPage() {
     setIsLoading(true);
     
     try {
-      const response = await fetch("http://localhost:3000/auth/signup", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ...formData,
-          phone: Number(formData.phone)
-        }),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        console.log("Signup successful:", result);
-        router.push("/login?message=Account created successfully! Please login.");
-      } else {
-        const errorData = await response.json();
-        console.error("Signup failed:", errorData);
-        // Handle specific error messages from backend
-        if (errorData.message?.includes("email")) {
-          setErrors({ email: errorData.message, fullName: "", phone: "", address: "", password: "", role: "user" });
-        } else if (errorData.message?.includes("phone")) {
-          setErrors({ phone: errorData.message, fullName: "", email: "", address: "", password: "", role: "user" });
+      const response = await signup(formData);
+        console.log("Signup response:", response);
+        const result = await response;
+        if (result.access_token) {
+          console.log("Signup successful:", result);
+          router.push("/login?message=Account created successfully! Please login.");
+        }else {
+          const errorData = await response;
+          console.error("Signup failed:", errorData);
+          // Handle specific error messages from backend
+          if (errorData.message?.includes("email")) {
+            setErrors({ email: errorData.message, fullName: "", phone: "", address: "", password: "", role: "user" });
+          } else if (errorData.message?.includes("phone")) {
+            setErrors({ phone: errorData.message, fullName: "", email: "", address: "", password: "", role: "user" });
+          }
         }
+      } catch (error) {
+        console.error("Signup error:", error);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error("Signup error:", error);
-    } finally {
-      setIsLoading(false);
-    }
+
+
+
   };
 
   const handleInputChange = (field: keyof SignupFormData, value: string) => {

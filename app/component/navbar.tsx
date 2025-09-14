@@ -31,7 +31,8 @@ export default function Navbar() {
         }
         const getCartItems = async () => {
         const cartItems = await getAllCart();
-            setCartItems(cartItems.cartProducts.length);
+            const data=cartItems.data.cartDetails.cartProducts;
+            setCartItems(data?.length);
             console.log("cartItems", cartItems);
         }
         getCartItems();

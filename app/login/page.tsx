@@ -5,7 +5,7 @@ import { Eye, EyeOff, Mail, Lock, ArrowRight, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { z } from "zod";
 import { loginSchema, type LoginFormData } from "@/lib/validation";
-import axios from "axios";
+import { login } from "@/lib/apiCall";
 
 interface FormErrors {
   email?: string;
@@ -63,10 +63,11 @@ export default function LoginPage() {
     
     try {
         console.log("Login form data:", formData);
-      const response = await axios.post("http://localhost:3000/auth/login",formData);
+      const response = await login(formData.email, formData.password);
+      console.log("Login response:", response);
 
 
-        const result = await response.data;
+        const result = await response;
  
         // Store token if provided
         if (result.access_token) {

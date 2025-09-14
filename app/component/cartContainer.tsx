@@ -32,15 +32,16 @@ export default function CartContainer({ isOpen, onClose }: CartContainerProps) {
       
       try {
         const response = await getAllCart();
+        const data=response.data.cartDetails.cartProducts;
         console.log("API Response:", response);
-        if (response.cartProducts.length === 0) {
+        if (response.data.cartDetails.length=== 0) {
           setError("No cart found");
           setCartItems([]);
           return;
         }
-        setCartId(response.cartId);
-        console.log("cartId", response.cartId);
-        setCartItems(response.cartProducts);
+        setCartId(response.data.cartDetails.cartId);
+        console.log("cartId", response.data.cartDetails.cartId);
+        setCartItems(data);
         
        
       } catch (error) {
@@ -99,17 +100,17 @@ export default function CartContainer({ isOpen, onClose }: CartContainerProps) {
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-bold text-gray-800">Shopping Cart</h2>
               <div className="flex items-center gap-2">                              
-                <button
-                  onClick={onClose}
-                  className="text-white hover:text-gray-200 transition-colors p-2"
-                >
-                  <X className="w-6 h-6 cursor-pointer text-iris" />
-                </button>
-              </div>
+              <button
+                onClick={onClose}
+                className="text-white hover:text-gray-200 transition-colors p-2"
+              >
+                <X className="w-6 h-6 cursor-pointer text-iris" />
+              </button>
+            </div>
             </div>
       
           </div>
-            
+
           {/* Cart Items */}
           <div className="flex-1 overflow-y-auto p-6">
             {isLoading ? (

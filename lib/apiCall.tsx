@@ -1,5 +1,19 @@
-import axios from "axios";
+import axios, { AxiosError } from "axios";
 const apiUrl = "http://localhost:3000";
+
+export const login = async (email: string, password: string) => {
+    const response = await axios.post(`${apiUrl}/auth/login`, { email, password });
+    return response.data;
+}
+
+export const signup = async (signupData: any) => {
+
+    
+    console.log("body", signupData);
+    const response = await axios.post(`${apiUrl}/auth/signup`, {signupData});
+    console.log("response", response);
+    return response.data;
+}
 
 export const updateCustomer = async (customerData: any) => {
         const token = localStorage.getItem("authToken");
@@ -12,7 +26,6 @@ export const updateCustomer = async (customerData: any) => {
     return response.data;
 }
      
-
 export const getAllPerfumes = async () => {
      const response = await axios.get(`${apiUrl}/perfume`);
      return response.data;
@@ -47,26 +60,42 @@ export const addToCart = async ( quantity: number, totalPrice: number, perfumeId
 export const getAllCart = async () => { 
     const token = localStorage.getItem("authToken");
     const customerId = localStorage.getItem("customerId");
-    const response = await axios.post(`${apiUrl}/customer/get-all-carts`, {
-        customerId
-    }, {
-        headers: {
-            "Authorization": `Bearer ${token}`
+    try {
+        const response = await axios.post(`${apiUrl}/customer/get-all-carts`, {
+            customerId
+        }, {
+            headers: {
+                "Authorization": `Bearer ${token}`
+            }
+        });
+        console.log("response", response);
+        return response.data;
+    } catch (error) {
+        if (error instanceof AxiosError && error.response?.status === 404) {
+            console.error("Cart not found:", error);
+            return { data: { cartDetails: { cartProducts: [] } } };
         }
-    });
-    console.log("response", response);
-    return response.data;
+        throw error;
+    }
 }
 
 export const deleteCart = async (cartId: string) => {
     const token = localStorage.getItem("authToken");
-    const response = await axios.delete(`${apiUrl}/customer/delete-cart`, {
-        data: { cartId },
-        headers: {
-            "Authorization": `Bearer ${token}`
+    try {
+        const response = await axios.delete(`${apiUrl}/customer/delete-cart`, {
+            data: { cartId },
+            headers: {
+                "Authorization": `Bearer ${token}`
+            }
+        });
+        return response.data;
+    } catch (error) {
+        if (error instanceof AxiosError && error.response?.status === 404) {
+            console.error("Cart not found:", error);
+            return [];
         }
-    });
-    return response.data;
+        throw error;
+    }
 }
 
 export const createOrder = async ( cartId: string,orderData: any) => {
@@ -85,6 +114,22 @@ export const createOrder = async ( cartId: string,orderData: any) => {
         }
     });
     console.log("Order response", response);
+    return response.data;
+}
+
+export const getAllPendingOrders = async () => {
+    const token = localStorage.getItem("authToken");
+    const customerId = localStorage.getItem("customerId");
+    const response = await axios.post(
+        `http://localhost:3000/customer/get-all-pending-orders`,
+        { customerId },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          }
+        }
+      );
     return response.data;
 }
 

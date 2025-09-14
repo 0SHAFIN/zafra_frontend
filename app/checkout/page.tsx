@@ -67,15 +67,16 @@ useEffect(() => {
         
         try {
           const response = await getAllCart();
+          const data=response.data.cartDetails.cartProducts;
           console.log("API Response:", response);
-          if (response.cartProducts.length === 0) {
+          if (data?.length === 0) {
             setCartItems([]);
             return;
           }
           
-          setCartItems(response.cartProducts);
-          console.log("cartId", response.cartId);
-          setCartId(response.cartId);
+          setCartItems(data || []);
+          console.log("cartId", response.data.cartDetails.cartId);
+          setCartId(response.data.cartDetails.cartId);
          
         } catch (error) {
           console.error("Error fetching cart:", error);

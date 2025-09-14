@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { User, Mail, Phone, MapPin, Edit3, Save, X, LogOut, ShoppingBag, Heart, Settings, Package, Calendar, DollarSign, CheckCircle, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import axios from "axios";
-import { updateCustomer } from "@/lib/apiCall";
+import { getAllPendingOrders, updateCustomer } from "@/lib/apiCall";
 
 interface CustomerData {
   id: string;
@@ -81,20 +81,8 @@ export default function CustomerProfilePage() {
   const fetchOrders = async (customerId: string) => {
     setOrdersLoading(true);
     try {
-      console.log("customerId", customerId);
-      const token = localStorage.getItem("authToken");
-      console.log(token);
-      const response = await axios.post(
-        `http://localhost:3000/customer/get-all-pending-orders`,
-        { customerId },
-        {
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          }
-        }
-      );
-      const ordersData = await response.data;
+      const response = await getAllPendingOrders();
+      const ordersData = await response;
       console.log("ordersData", ordersData);
       
       // Ensure ordersData is always an array
