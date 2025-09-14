@@ -5,14 +5,12 @@ import {ShoppingCart, User} from "lucide-react";
 import { useEffect, useState } from "react";
 import CartContainer from "./cartContainer";
 import { getAllCart } from "@/lib/apiCall";
-
 export default function Navbar() {
 
     const [isCartOpen, setIsCartOpen] = useState(false);
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [user, setUser] = useState<any>(null);
     const [cartItems, setCartItems] = useState<any>(null);
-
     useEffect(() => {
         const token = localStorage.getItem("authToken");
         const userData = localStorage.getItem("user");
