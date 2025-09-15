@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Eye, EyeOff, Mail, Lock, ArrowRight, ArrowLeft } from "lucide-react";
+import { Eye, EyeOff, Mail, Lock, ArrowRight, ArrowLeft, UserCircle } from "lucide-react";
 import Link from "next/link";
 import { z } from "zod";
 import { loginSchema, type LoginFormData } from "@/lib/validation";
@@ -70,10 +70,10 @@ export default function LoginPage() {
  
         // Store token if provided
         if (result.access_token) {
-          console.log("user", result);
           localStorage.setItem("user", JSON.stringify(result.customer));
           localStorage.setItem("authToken", result.access_token);
-          router.push("/");
+          // Redirect to manager dashboard
+          router.push("/manager/dashboard");
         }else{
           console.error("Login failed:", result);
           setErrors({ general: result.message || "Invalid email or password" });
@@ -119,7 +119,7 @@ export default function LoginPage() {
         {/* Login Form */}
         <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-200">
             <div className="text-center ">
-                <span className="text-3xl font-bold text-iris mb-4 inline-block"> Sign In </span>
+                <span className="text-3xl font-bold text-iris mb-4 inline-block">Manager Sign In </span>
             </div>
           <form onSubmit={handleSubmit} className="space-y-4 ">
             {/* General Error */}
@@ -201,6 +201,24 @@ export default function LoginPage() {
               )}
             </button>
           </form>
+
+           <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Role
+              </label>
+              <div className="relative">
+                <UserCircle className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <select
+                  value={formData.role}
+                  onChange={(e) => handleInputChange("role", e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-iris focus:border-transparent"
+                >
+                  
+                  <option value="manager">Manager</option>
+                  
+                </select>
+              </div>
+            </div>
 
           {/* Signup Link */}
           <div className="mt-6 text-center">

@@ -53,7 +53,7 @@ export default function CustomerPage() {
         <p className="text-center text-gray-500">No customers found.</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {customers.map((customer) => (
+          {customers.slice(0, 4).map((customer) => (
             <div
               key={customer.id}
               className="bg-white shadow-md rounded-lg p-6 hover:shadow-xl transition-shadow duration-300"

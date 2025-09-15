@@ -351,15 +351,7 @@ export default function CustomerProfilePage() {
                   )}
                 </div>
 
-                {/* Role */}
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Account Type
-                  </label>
-                  <span className="inline-block bg-iris text-white px-3 py-1 rounded-full text-sm font-semibold capitalize">
-                    {customerData.role}
-                  </span>
-                </div>
+               
               </div>
 
               {/* Account Information Card */}

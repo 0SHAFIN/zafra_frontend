@@ -99,7 +99,7 @@ export default function SignupPage() {
         {/* Signup Form */}
         <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-200">
             <div className="text-center ">
-                <span className="text-3xl font-bold text-iris mb-4 inline-block"> Sign Up </span>
+                <span className="text-3xl font-bold text-iris mb-4 inline-block">Manager Sign Up </span>
             </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Full Name */}

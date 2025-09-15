@@ -31,7 +31,6 @@ export default function PerfumeDetailPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isUpdating, setIsUpdating] = useState(false);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
-    const [newNote, setNewNote] = useState("");
 
     const categories = ["Men's Perfumes", "Unisex Perfumes", "Women's Perfumes"];
   const concentrations = ["EDT", "EDP", "Parfum", "Extrait"];
@@ -64,18 +63,7 @@ export default function PerfumeDetailPage() {
         }));
     };
 
-    const handleAddNote = () => {
-        if (!perfume || !newNote.trim()) return;
-        const updatedNotes = [...(perfume.notes || []), newNote.trim()];
-        setPerfume(prev => ({ ...prev!, notes: updatedNotes }));
-        setNewNote("");
-    };
 
-    const handleRemoveNote = (noteToRemove: string) => {
-        if (!perfume) return;
-        const updatedNotes = (perfume.notes || []).filter(note => note !== noteToRemove);
-        setPerfume(prev => ({ ...prev!, notes: updatedNotes }));
-    };
 
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!perfume) return;
@@ -235,7 +223,6 @@ export default function PerfumeDetailPage() {
                                             name="name"
                                             value={perfume.name}
                                             onChange={handleInputChange}
-                                            required
                                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                                         />
                                     </div>
@@ -249,7 +236,7 @@ export default function PerfumeDetailPage() {
                                             name="brand"
                                             value={perfume.brand}
                                             onChange={handleInputChange}
-                                            required
+                                            
                                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                                         />
                                     </div>
@@ -262,7 +249,7 @@ export default function PerfumeDetailPage() {
                                             name="category"
                                             value={perfume.category}
                                             onChange={handleInputChange}
-                                            required
+                                            
                                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                                         >
                                             <option value="">Select Category</option>
@@ -313,7 +300,6 @@ export default function PerfumeDetailPage() {
                                             name="image"
                                             value={perfume.image}
                                             onChange={handleInputChange}
-                                            required
                                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                                             placeholder="https://example.com/image.jpg"
                                         />
@@ -335,7 +321,6 @@ export default function PerfumeDetailPage() {
                                             name="price"
                                             value={perfume.price}
                                             onChange={handleInputChange}
-                                            required
                                             min="0"
                                             step="0.01"
                                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
@@ -366,7 +351,7 @@ export default function PerfumeDetailPage() {
                                             name="stock"
                                             value={perfume.stock}
                                             onChange={handleInputChange}
-                                            required
+                                            
                                             min="0"
                                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                                         />
@@ -383,7 +368,7 @@ export default function PerfumeDetailPage() {
                                     name="description"
                                     value={perfume.description}
                                     onChange={handleInputChange}
-                                    required
+                                    
                                     rows={4}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                                 />
