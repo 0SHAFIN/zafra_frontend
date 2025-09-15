@@ -68,7 +68,7 @@ export default function AdminLoginPage() {
     try {
       console.log("Admin login form data:", formData);
       const response = await axios.post(
-        "http://localhost:3000/admin/auth/login",
+        "http://localhost:3000/admin/auth/login", // Correct backend endpoint
         formData,
         {
           headers: {
@@ -81,28 +81,87 @@ export default function AdminLoginPage() {
       console.log("Admin login response:", result);
 
       // Store token if provided
-      if (result.access_token) {
-        console.log("admin", result);
+      if (result.access_token || result.accessToken || result.token) {
+        console.log("Token found, processing admin data...");
 
-        // Store admin data with proper fallback
-        const adminUser = result.admin || result.user || result;
-        localStorage.setItem("admin", JSON.stringify(adminUser));
-        localStorage.setItem("adminId", adminUser.id);
-        localStorage.setItem("adminAuthToken", result.access_token);
-        localStorage.setItem("userRole", "admin");
+        const token = result.access_token || result.accessToken || result.token;
 
-        // Set authorization header for future requests
-        axios.defaults.headers.common[
-          "Authorization"
-        ] = `Bearer ${result.access_token}`;
+        // Backend returns user object with id, email, name, role
+        const adminUser = result.user || result.data || result;
+        console.log("Admin user object:", adminUser);
 
-        router.push("/admin/dashboard");
+        if (!adminUser || (!adminUser.email && !result.email)) {
+          console.error("No user object in response");
+          setErrors({
+            general: "Invalid response from server. Please try again.",
+          });
+          return;
+        }
+
+        // Handle case where user data might be at the root level
+        const userData = adminUser.email
+          ? adminUser
+          : {
+              id: result.id || adminUser.id,
+              email: result.email || adminUser.email,
+              name: result.name || adminUser.name,
+              role: result.role || adminUser.role,
+            };
+
+        // Check role from user object
+        const userRole = userData.role;
+        console.log("User role:", userRole);
+
+        // Only allow admin role for admin login
+        if (userRole === "admin") {
+          // Map backend user structure to frontend AuthUser structure
+          const mappedUser = {
+            id: String(userData.id), // Convert to string if needed
+            email: userData.email,
+            fullName: userData.name,
+            role: userData.role,
+          };
+
+          console.log("Mapped user for storage:", mappedUser);
+
+          localStorage.setItem("admin", JSON.stringify(mappedUser));
+          localStorage.setItem("adminId", String(userData.id));
+          localStorage.setItem("adminAuthToken", token);
+          localStorage.setItem("authToken", token); // Also store in general key for compatibility
+          localStorage.setItem("userRole", "admin");
+
+          // Set authorization header for future requests
+          axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+
+          console.log("Admin login successful, redirecting to dashboard...");
+          router.push("/admin/dashboard");
+        } else {
+          console.log(
+            "Access denied - user role is:",
+            userRole,
+            "but expected admin"
+          );
+          setErrors({ general: "Access denied. Admin role required." });
+        }
       } else {
-        console.error("Admin login failed:", result);
-        setErrors({ general: result.message || "Invalid email or password" });
+        console.error("No access_token in response:", result);
+        setErrors({
+          general:
+            result.message ||
+            result.error ||
+            "Login failed. Please check your credentials.",
+        });
       }
     } catch (error) {
       console.error("Admin login error:", error);
+      console.log("Error details:", {
+        message: error instanceof Error ? error.message : "Unknown error",
+        isAxiosError: axios.isAxiosError(error),
+        response: axios.isAxiosError(error) ? error.response : null,
+        status: axios.isAxiosError(error) ? error.response?.status : null,
+        data: axios.isAxiosError(error) ? error.response?.data : null,
+      });
+
       let errorMessage = "An error occurred. Please try again.";
       if (axios.isAxiosError(error)) {
         if (error.response?.data?.message) {
@@ -111,6 +170,17 @@ export default function AdminLoginPage() {
           errorMessage = "Invalid email or password";
         } else if (error.response?.status === 403) {
           errorMessage = "Access denied. Admin privileges required.";
+        } else if (error.response?.status === 404) {
+          errorMessage =
+            "Login endpoint not found. Please check server configuration.";
+        } else if (error.response?.status && error.response.status >= 500) {
+          errorMessage = "Server error. Please try again later.";
+        } else if (
+          error.code === "ECONNREFUSED" ||
+          error.message.includes("Network Error")
+        ) {
+          errorMessage =
+            "Cannot connect to server. Please check if the backend is running.";
         }
       }
       setErrors({ general: errorMessage });

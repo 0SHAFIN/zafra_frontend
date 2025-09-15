@@ -1,6 +1,12 @@
 "use client";
-import { useState, useEffect } from "react";
-import { Order, orderAPI, customerAPI, Customer, Cart } from "@/lib/api";
+import { useState, useEffect, useCallback } from "react";
+import { Order } from "@/lib/api";
+import {
+  orderService,
+  OrderStatus as ServiceStatus,
+  OrderRecord,
+} from "@/lib/orderService";
+import { useToast } from "@/app/component/ui/ToastProvider";
 import {
   ShoppingBag,
   Search,
@@ -15,25 +21,19 @@ import {
   Eye,
   Trash2,
   Plus,
-  Edit,
+  X,
   Package,
   MapPin,
-  Phone,
-  Mail,
 } from "lucide-react";
 
 interface OrderManagementProps {
   userRole: "admin" | "manager";
 }
 
-type OrderStatus =
-  | "pending"
-  | "processing"
-  | "shipped"
-  | "delivered"
-  | "cancelled";
+type OrderStatus = ServiceStatus;
 
 export default function OrderManagement({ userRole }: OrderManagementProps) {
+  const { showSuccess, showError, showWarning } = useToast();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -48,7 +48,14 @@ export default function OrderManagement({ userRole }: OrderManagementProps) {
     customerId: "",
     customerName: "",
     customerEmail: "",
-    shippingAddress: "",
+    status: "Pending",
+    shippingAddress: {
+      street: "",
+      city: "",
+      state: "",
+      country: "",
+      zipCode: "",
+    },
     items: [] as {
       perfumeId: string;
       perfumeName: string;
@@ -59,23 +66,59 @@ export default function OrderManagement({ userRole }: OrderManagementProps) {
   });
 
   // Fetch orders
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await orderAPI.getAll();
-      // Ensure data is an array
-      setOrders(Array.isArray(data) ? data : []);
+      // orderService.list will attempt role-specific endpoints then fallback to /customer/get-all-orders (spec customer module)
+      const data = await orderService.list(userRole);
+      const mapped: Order[] = (Array.isArray(data) ? data : []).map(
+        (o: OrderRecord) => ({
+          id: o.id,
+          customerId: o.customerId,
+          customerName: o.customerName,
+          items: o.items.map((it) => ({
+            id: it.id || "temp",
+            perfumeId: it.perfumeId,
+            perfumeName: it.perfumeName,
+            quantity: it.quantity,
+            price: it.price,
+          })),
+          totalAmount: o.totalAmount || 0,
+          status: o.status,
+          shippingAddress: o.shippingAddress || "",
+          createdAt: o.createdAt || new Date().toISOString(),
+          updatedAt: o.updatedAt || new Date().toISOString(),
+        })
+      );
+      if (mapped.length === 0) {
+        if (typeof window !== "undefined") {
+          // Surface quick diagnostics in dev
+          const diag = {
+            userRole,
+            hasAuthToken: !!localStorage.getItem("authToken"),
+            hasAdminToken: !!localStorage.getItem("adminAuthToken"),
+            hasManagerToken: !!localStorage.getItem("managerAuthToken"),
+            customerId: localStorage.getItem("customerId"),
+          };
+          console.warn("OrderManagement: no orders returned", diag);
+        }
+      }
+      setOrders(mapped);
     } catch (error) {
       console.error("Error fetching orders:", error);
       setOrders([]); // Set empty array on error
+      showError(
+        "Failed to Load",
+        "Unable to load orders. Please refresh the page."
+      );
     } finally {
       setLoading(false);
     }
-  };
+  }, [userRole, showError]);
 
   useEffect(() => {
     fetchOrders();
-  }, []);
+  }, [fetchOrders]);
 
   // Handle status update
   const handleStatusUpdate = async (
@@ -83,18 +126,22 @@ export default function OrderManagement({ userRole }: OrderManagementProps) {
     newStatus: OrderStatus
   ) => {
     try {
-      await orderAPI.updateStatus(orderId, newStatus);
+      await orderService.updateStatus(orderId, newStatus, userRole);
       await fetchOrders();
+      showSuccess("Status Updated", `Order status changed to ${newStatus}`);
     } catch (error) {
       console.error("Error updating order status:", error);
-      alert("Error updating order status. Please try again.");
+      showError(
+        "Update Failed",
+        "Unable to update order status. Please try again."
+      );
     }
   };
 
   // Handle delete (admin only)
   const handleDelete = async (orderId: string) => {
     if (userRole !== "admin") {
-      alert("Only admins can delete orders");
+      showWarning("Access Denied", "Only admins can delete orders");
       return;
     }
 
@@ -106,39 +153,53 @@ export default function OrderManagement({ userRole }: OrderManagementProps) {
       return;
 
     try {
-      await orderAPI.delete(orderId);
+      await orderService.delete(orderId);
       await fetchOrders();
+      showSuccess("Order Deleted", "Order has been successfully removed");
     } catch (error) {
       console.error("Error deleting order:", error);
-      alert("Error deleting order. Please try again.");
+      showError("Delete Failed", "Unable to delete order. Please try again.");
     }
   };
 
   // Handle create order (admin only)
   const handleCreateOrder = async () => {
     if (userRole !== "admin") {
-      alert("Only admins can create orders");
+      showWarning("Access Denied", "Only admins can create orders");
       return;
     }
 
     if (
       !createOrderData.customerId ||
-      !createOrderData.shippingAddress ||
+      !createOrderData.shippingAddress.street ||
+      !createOrderData.shippingAddress.city ||
+      !createOrderData.shippingAddress.state ||
+      !createOrderData.shippingAddress.zipCode ||
+      !createOrderData.shippingAddress.country ||
       createOrderData.items.length === 0
     ) {
-      alert("Please fill in all required fields and add at least one item");
+      showWarning(
+        "Missing Information",
+        "Please fill in all required fields and add at least one item"
+      );
       return;
     }
 
     try {
       setIsCreating(true);
-      await orderAPI.create({
+      // Convert items to include temporary IDs
+      const itemsWithIds = createOrderData.items.map((item, index) => ({
+        id: `temp_${Date.now()}_${index}`, // Temporary ID for creation
+        ...item,
+      }));
+
+      await orderService.create({
         customerId: createOrderData.customerId,
         customerName: createOrderData.customerName,
-        items: createOrderData.items,
+        items: itemsWithIds,
         totalAmount: createOrderData.totalAmount,
         status: "pending",
-        shippingAddress: createOrderData.shippingAddress,
+        shippingAddress: `${createOrderData.shippingAddress.street}, ${createOrderData.shippingAddress.city}, ${createOrderData.shippingAddress.state} ${createOrderData.shippingAddress.zipCode}, ${createOrderData.shippingAddress.country}`,
       });
 
       // Reset form
@@ -146,37 +207,44 @@ export default function OrderManagement({ userRole }: OrderManagementProps) {
         customerId: "",
         customerName: "",
         customerEmail: "",
-        shippingAddress: "",
+        status: "Pending",
+        shippingAddress: {
+          street: "",
+          city: "",
+          state: "",
+          country: "",
+          zipCode: "",
+        },
         items: [],
         totalAmount: 0,
       });
 
       setShowCreateOrder(false);
       await fetchOrders();
-    } catch (error) {
+      showSuccess("Order Created", "New order has been successfully created");
+    } catch (error: unknown) {
       console.error("Error creating order:", error);
-      alert("Error creating order. Please try again.");
+      let errorMessage = "Unknown error occurred";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (
+        typeof error === "object" &&
+        error !== null &&
+        "response" in error
+      ) {
+        const axiosError = error as {
+          response?: { data?: { message?: string } };
+        };
+        errorMessage =
+          axiosError.response?.data?.message || "API error occurred";
+      }
+      showError("Creation Failed", errorMessage);
     } finally {
       setIsCreating(false);
     }
   };
 
   // Handle create order from cart
-  const handleCreateFromCart = async (cartId: string) => {
-    if (userRole !== "admin") {
-      alert("Only admins can create orders from cart");
-      return;
-    }
-
-    try {
-      await orderAPI.createFromCart(cartId);
-      await fetchOrders();
-    } catch (error) {
-      console.error("Error creating order from cart:", error);
-      alert("Error creating order from cart. Please try again.");
-    }
-  };
-
   // Filter orders
   const filteredOrders = (orders || []).filter((order) => {
     const matchesSearch =
@@ -423,82 +491,194 @@ export default function OrderManagement({ userRole }: OrderManagementProps) {
 
       {/* Create Order Modal (Admin only) */}
       {showCreateOrder && userRole === "admin" && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold">Create New Order</h3>
-              <button
-                onClick={() => setShowCreateOrder(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <XCircle className="w-6 h-6" />
-              </button>
+        <div className="fixed inset-0  bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className="bg-white rounded-3xl shadow-2xl p-0 w-full max-w-4xl max-h-[95vh] overflow-hidden animate-slideUp transform">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-purple-900 to-purple-600 p-6 text-white relative overflow-hidden">
+              <div className="absolute inset-0 bg-white opacity-10 transform rotate-12 scale-150"></div>
+              <div className="relative z-10 flex justify-between items-center">
+                <div>
+                  <h3 className="text-2xl font-bold">Create New Order</h3>
+                  <p className="text-white/80 text-sm mt-1">
+                    Add a new order to the system with customer details and
+                    items
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowCreateOrder(false)}
+                  className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-all duration-300"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
             </div>
 
-            <div className="space-y-4">
+            {/* Modal Content */}
+            <div className="p-8 overflow-y-auto max-h-[calc(95vh-120px)] space-y-8">
               {/* Customer Information */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Customer ID *
-                  </label>
-                  <input
-                    type="text"
-                    value={createOrderData.customerId}
-                    onChange={(e) =>
-                      setCreateOrderData((prev) => ({
-                        ...prev,
-                        customerId: e.target.value,
-                      }))
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-iris focus:border-transparent"
-                    placeholder="Enter customer ID"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Customer Name
-                  </label>
-                  <input
-                    type="text"
-                    value={createOrderData.customerName}
-                    onChange={(e) =>
-                      setCreateOrderData((prev) => ({
-                        ...prev,
-                        customerName: e.target.value,
-                      }))
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-iris focus:border-transparent"
-                    placeholder="Enter customer name"
-                  />
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
+                <h4 className="text-lg font-semibold text-gray-800 mb-6 flex items-center space-x-2">
+                  <User className="w-5 h-5 text-iris" />
+                  <span>Customer Information</span>
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="flex items-center space-x-2 text-sm font-semibold text-gray-700">
+                      <User className="w-4 h-4 text-iris" />
+                      <span>Customer ID *</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={createOrderData.customerId}
+                      onChange={(e) =>
+                        setCreateOrderData((prev) => ({
+                          ...prev,
+                          customerId: e.target.value,
+                        }))
+                      }
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-iris focus:ring-4 focus:ring-iris/10 transition-all duration-300 bg-white"
+                      placeholder="Enter customer ID"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="flex items-center space-x-2 text-sm font-semibold text-gray-700">
+                      <User className="w-4 h-4 text-iris" />
+                      <span>Customer Name</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={createOrderData.customerName}
+                      onChange={(e) =>
+                        setCreateOrderData((prev) => ({
+                          ...prev,
+                          customerName: e.target.value,
+                        }))
+                      }
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-iris focus:ring-4 focus:ring-iris/10 transition-all duration-300 bg-white"
+                      placeholder="Enter customer name"
+                    />
+                  </div>
                 </div>
               </div>
 
               {/* Shipping Address */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Shipping Address *
-                </label>
-                <textarea
-                  value={createOrderData.shippingAddress}
-                  onChange={(e) =>
-                    setCreateOrderData((prev) => ({
-                      ...prev,
-                      shippingAddress: e.target.value,
-                    }))
-                  }
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-iris focus:border-transparent"
-                  placeholder="Enter shipping address"
-                />
+              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border border-green-200">
+                <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center space-x-2">
+                  <MapPin className="w-5 h-5 text-iris" />
+                  <span>Shipping Information</span>
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="flex items-center space-x-2 text-sm font-semibold text-gray-700">
+                      <MapPin className="w-4 h-4 text-iris" />
+                      <span>Street Address *</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={createOrderData.shippingAddress.street}
+                      onChange={(e) =>
+                        setCreateOrderData((prev) => ({
+                          ...prev,
+                          shippingAddress: {
+                            ...prev.shippingAddress,
+                            street: e.target.value,
+                          },
+                        }))
+                      }
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-iris focus:ring-4 focus:ring-iris/10 transition-all duration-300 bg-white"
+                      placeholder="Enter street address"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700">
+                      City *
+                    </label>
+                    <input
+                      type="text"
+                      value={createOrderData.shippingAddress.city}
+                      onChange={(e) =>
+                        setCreateOrderData((prev) => ({
+                          ...prev,
+                          shippingAddress: {
+                            ...prev.shippingAddress,
+                            city: e.target.value,
+                          },
+                        }))
+                      }
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-iris focus:ring-4 focus:ring-iris/10 transition-all duration-300 bg-white"
+                      placeholder="Enter city"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700">
+                      State *
+                    </label>
+                    <input
+                      type="text"
+                      value={createOrderData.shippingAddress.state}
+                      onChange={(e) =>
+                        setCreateOrderData((prev) => ({
+                          ...prev,
+                          shippingAddress: {
+                            ...prev.shippingAddress,
+                            state: e.target.value,
+                          },
+                        }))
+                      }
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-iris focus:ring-4 focus:ring-iris/10 transition-all duration-300 bg-white"
+                      placeholder="Enter state"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700">
+                      ZIP Code *
+                    </label>
+                    <input
+                      type="text"
+                      value={createOrderData.shippingAddress.zipCode}
+                      onChange={(e) =>
+                        setCreateOrderData((prev) => ({
+                          ...prev,
+                          shippingAddress: {
+                            ...prev.shippingAddress,
+                            zipCode: e.target.value,
+                          },
+                        }))
+                      }
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-iris focus:ring-4 focus:ring-iris/10 transition-all duration-300 bg-white"
+                      placeholder="Enter ZIP code"
+                    />
+                  </div>
+                  <div className="md:col-span-2 space-y-2">
+                    <label className="text-sm font-semibold text-gray-700">
+                      Country *
+                    </label>
+                    <input
+                      type="text"
+                      value={createOrderData.shippingAddress.country}
+                      onChange={(e) =>
+                        setCreateOrderData((prev) => ({
+                          ...prev,
+                          shippingAddress: {
+                            ...prev.shippingAddress,
+                            country: e.target.value,
+                          },
+                        }))
+                      }
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-iris focus:ring-4 focus:ring-iris/10 transition-all duration-300 bg-white"
+                      placeholder="Enter country"
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Order Items */}
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Order Items
-                  </label>
+              <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-6 border border-purple-200">
+                <div className="flex justify-between items-center mb-6">
+                  <h4 className="text-lg font-semibold text-gray-800 flex items-center space-x-2">
+                    <Package className="w-5 h-5 text-iris" />
+                    <span>Order Items</span>
+                  </h4>
                   <button
                     onClick={() => {
                       setCreateOrderData((prev) => ({
@@ -514,7 +694,7 @@ export default function OrderManagement({ userRole }: OrderManagementProps) {
                         ],
                       }));
                     }}
-                    className="text-iris hover:text-iris-dark text-sm flex items-center space-x-1"
+                    className="flex items-center space-x-2 px-4 py-2 bg-iris text-white rounded-lg hover:bg-iris/90 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Add Item</span>
@@ -522,105 +702,143 @@ export default function OrderManagement({ userRole }: OrderManagementProps) {
                 </div>
 
                 {createOrderData.items.length === 0 ? (
-                  <p className="text-gray-500 text-sm">No items added yet</p>
+                  <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50">
+                    <Package className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                    <p className="text-gray-500 font-medium">
+                      No items added yet
+                    </p>
+                    <p className="text-gray-400 text-sm">
+                      Click &ldquo;Add Item&rdquo; to start building the order
+                    </p>
+                  </div>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-4">
                     {createOrderData.items.map((item, index) => (
                       <div
                         key={index}
-                        className="grid grid-cols-4 gap-2 p-3 bg-gray-50 rounded-lg"
+                        className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm"
                       >
-                        <input
-                          type="text"
-                          placeholder="Perfume ID"
-                          value={item.perfumeId}
-                          onChange={(e) => {
-                            const newItems = [...createOrderData.items];
-                            newItems[index].perfumeId = e.target.value;
-                            setCreateOrderData((prev) => ({
-                              ...prev,
-                              items: newItems,
-                            }));
-                          }}
-                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Perfume Name"
-                          value={item.perfumeName}
-                          onChange={(e) => {
-                            const newItems = [...createOrderData.items];
-                            newItems[index].perfumeName = e.target.value;
-                            setCreateOrderData((prev) => ({
-                              ...prev,
-                              items: newItems,
-                            }));
-                          }}
-                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                        />
-                        <input
-                          type="number"
-                          placeholder="Qty"
-                          min="1"
-                          value={item.quantity}
-                          onChange={(e) => {
-                            const newItems = [...createOrderData.items];
-                            newItems[index].quantity =
-                              parseInt(e.target.value) || 1;
-                            const total = newItems.reduce(
-                              (sum, itm) => sum + itm.quantity * itm.price,
-                              0
-                            );
-                            setCreateOrderData((prev) => ({
-                              ...prev,
-                              items: newItems,
-                              totalAmount: total,
-                            }));
-                          }}
-                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                        />
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type="number"
-                            placeholder="Price"
-                            min="0"
-                            step="0.01"
-                            value={item.price}
-                            onChange={(e) => {
-                              const newItems = [...createOrderData.items];
-                              newItems[index].price =
-                                parseFloat(e.target.value) || 0;
-                              const total = newItems.reduce(
-                                (sum, itm) => sum + itm.quantity * itm.price,
-                                0
-                              );
-                              setCreateOrderData((prev) => ({
-                                ...prev,
-                                items: newItems,
-                                totalAmount: total,
-                              }));
-                            }}
-                            className="px-2 py-1 border border-gray-300 rounded text-sm flex-1"
-                          />
-                          <button
-                            onClick={() => {
-                              const newItems = createOrderData.items.filter(
-                                (_, i) => i !== index
-                              );
-                              const total = newItems.reduce(
-                                (sum, itm) => sum + itm.quantity * itm.price,
-                                0
-                              );
-                              setCreateOrderData((prev) => ({
-                                ...prev,
-                                items: newItems,
-                                totalAmount: total,
-                              }));
-                            }}
-                            className="text-red-600 hover:text-red-800"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                              Perfume ID
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Enter ID"
+                              value={item.perfumeId}
+                              onChange={(e) => {
+                                const newItems = [...createOrderData.items];
+                                newItems[index].perfumeId = e.target.value;
+                                setCreateOrderData((prev) => ({
+                                  ...prev,
+                                  items: newItems,
+                                }));
+                              }}
+                              className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-iris focus:ring-2 focus:ring-iris/10 text-sm"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                              Perfume Name
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Enter name"
+                              value={item.perfumeName}
+                              onChange={(e) => {
+                                const newItems = [...createOrderData.items];
+                                newItems[index].perfumeName = e.target.value;
+                                setCreateOrderData((prev) => ({
+                                  ...prev,
+                                  items: newItems,
+                                }));
+                              }}
+                              className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-iris focus:ring-2 focus:ring-iris/10 text-sm"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                              Quantity
+                            </label>
+                            <input
+                              type="number"
+                              placeholder="1"
+                              min="1"
+                              value={item.quantity}
+                              onChange={(e) => {
+                                const newItems = [...createOrderData.items];
+                                newItems[index].quantity =
+                                  parseInt(e.target.value) || 1;
+                                const total = newItems.reduce(
+                                  (sum, itm) => sum + itm.quantity * itm.price,
+                                  0
+                                );
+                                setCreateOrderData((prev) => ({
+                                  ...prev,
+                                  items: newItems,
+                                  totalAmount: total,
+                                }));
+                              }}
+                              className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-iris focus:ring-2 focus:ring-iris/10 text-sm"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                              Price ($)
+                            </label>
+                            <input
+                              type="number"
+                              placeholder="0.00"
+                              min="0"
+                              step="0.01"
+                              value={item.price}
+                              onChange={(e) => {
+                                const newItems = [...createOrderData.items];
+                                newItems[index].price =
+                                  parseFloat(e.target.value) || 0;
+                                const total = newItems.reduce(
+                                  (sum, itm) => sum + itm.quantity * itm.price,
+                                  0
+                                );
+                                setCreateOrderData((prev) => ({
+                                  ...prev,
+                                  items: newItems,
+                                  totalAmount: total,
+                                }));
+                              }}
+                              className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-iris focus:ring-2 focus:ring-iris/10 text-sm"
+                            />
+                          </div>
+                          <div className="flex flex-col justify-end">
+                            <button
+                              onClick={() => {
+                                const newItems = createOrderData.items.filter(
+                                  (_, i) => i !== index
+                                );
+                                const total = newItems.reduce(
+                                  (sum, itm) => sum + itm.quantity * itm.price,
+                                  0
+                                );
+                                setCreateOrderData((prev) => ({
+                                  ...prev,
+                                  items: newItems,
+                                  totalAmount: total,
+                                }));
+                              }}
+                              className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-all duration-300"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="mt-3 pt-3 border-t border-gray-100">
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-gray-600">Item Total:</span>
+                            <span className="font-semibold text-gray-800">
+                              ${(item.quantity * item.price).toFixed(2)}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -639,17 +857,34 @@ export default function OrderManagement({ userRole }: OrderManagementProps) {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex justify-end space-x-3 pt-4 border-t">
+              <div className="flex space-x-4 pt-6 border-t border-gray-200">
                 <button
-                  onClick={() => setShowCreateOrder(false)}
-                  className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  onClick={() => {
+                    setShowCreateOrder(false);
+                    setCreateOrderData({
+                      customerId: "",
+                      customerName: "",
+                      customerEmail: "",
+                      status: "Pending",
+                      totalAmount: 0,
+                      shippingAddress: {
+                        street: "",
+                        city: "",
+                        state: "",
+                        country: "",
+                        zipCode: "",
+                      },
+                      items: [],
+                    });
+                  }}
+                  className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-all duration-300 font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleCreateOrder}
-                  disabled={isCreating}
-                  className="px-4 py-2 bg-iris text-white rounded-lg hover:bg-iris-dark disabled:opacity-50"
+                  disabled={isCreating || createOrderData.items.length === 0}
+                  className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-900 to-purple-600 text-white rounded-lg hover:from-iris/90 hover:to-purple-600/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:transform-none disabled:shadow-none"
                 >
                   {isCreating ? "Creating..." : "Create Order"}
                 </button>

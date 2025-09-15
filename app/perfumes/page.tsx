@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import PerfumeCard from "../component/perfume-card";
-import { Search, Filter, Grid, List } from "lucide-react";
+import { Search, Filter } from "lucide-react";
 
 interface Perfume {
   id: string;
@@ -22,23 +22,52 @@ export default function AllPerfumesPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   const categories = [
     { value: "all", label: "All Perfumes" },
     { value: "Men", label: "Men's Perfumes" },
     { value: "Women", label: "Women's Perfumes" },
-    { value: "Unisex", label: "Unisex Perfumes" }
+    { value: "Unisex", label: "Unisex Perfumes" },
   ];
 
   useEffect(() => {
     const fetchPerfumes = async () => {
       try {
         setLoading(true);
-        const response = await axios.get("http://localhost:3000/perfume");
+        const response = await axios.get("http://localhost:3000/perfumes"); // Fixed endpoint
         const data = response.data;
-        setPerfumes(data);
-        setFilteredPerfumes(data);
+        console.log("Perfumes data:", data); // Add logging to debug
+
+        // Map backend data to frontend interface
+        const mappedPerfumes = data.map(
+          (perfume: {
+            _id?: string;
+            id?: string;
+            name: string;
+            description: string;
+            price: number;
+            imageUrl?: string;
+            image?: string;
+            category?: string;
+            brand?: string;
+            stockQuantity?: number;
+            stock?: number;
+            discount?: number;
+          }) => ({
+            id: perfume._id || perfume.id || "",
+            name: perfume.name,
+            description: perfume.description,
+            price: Number(perfume.price) || 0,
+            image: perfume.imageUrl || perfume.image || "",
+            category: perfume.category || "Unisex",
+            brand: perfume.brand || "Zafra",
+            stock: perfume.stockQuantity || perfume.stock || 0,
+            discount: perfume.discount || 0,
+          })
+        );
+
+        setPerfumes(mappedPerfumes);
+        setFilteredPerfumes(mappedPerfumes);
       } catch (error) {
         console.error("Error fetching perfumes:", error);
         // Fallback data
@@ -46,12 +75,13 @@ export default function AllPerfumesPage() {
           {
             id: "1",
             name: "Midnight Jasmine",
-            description: "A seductive blend of jasmine, vanilla, and sandalwood",
+            description:
+              "A seductive blend of jasmine, vanilla, and sandalwood",
             price: 89,
             image: "🌸",
             category: "Women",
             brand: "Zafra",
-            stock: 25
+            stock: 25,
           },
           {
             id: "2",
@@ -61,7 +91,7 @@ export default function AllPerfumesPage() {
             image: "🌊",
             category: "Men",
             brand: "Zafra",
-            stock: 30
+            stock: 30,
           },
           {
             id: "3",
@@ -72,7 +102,7 @@ export default function AllPerfumesPage() {
             category: "Unisex",
             brand: "Zafra",
             stock: 15,
-            discount: 15
+            discount: 15,
           },
           {
             id: "4",
@@ -82,7 +112,7 @@ export default function AllPerfumesPage() {
             image: "🍋",
             category: "Men",
             brand: "Zafra",
-            stock: 0
+            stock: 0,
           },
           {
             id: "5",
@@ -92,7 +122,7 @@ export default function AllPerfumesPage() {
             image: "🌹",
             category: "Women",
             brand: "Zafra",
-            stock: 20
+            stock: 20,
           },
           {
             id: "6",
@@ -102,8 +132,8 @@ export default function AllPerfumesPage() {
             image: "🍋",
             category: "Unisex",
             brand: "Zafra",
-            stock: 18
-          }
+            stock: 18,
+          },
         ];
         setPerfumes(fallbackData);
         setFilteredPerfumes(fallbackData);
@@ -120,32 +150,23 @@ export default function AllPerfumesPage() {
 
     // Filter by category
     if (selectedCategory !== "all") {
-      filtered = filtered.filter(perfume => perfume.category === selectedCategory);
+      filtered = filtered.filter(
+        (perfume) => perfume.category === selectedCategory
+      );
     }
 
     // Filter by search term
     if (searchTerm) {
-      filtered = filtered.filter(perfume =>
-        perfume.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        perfume.brand.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        perfume.description.toLowerCase().includes(searchTerm.toLowerCase())
+      filtered = filtered.filter(
+        (perfume) =>
+          perfume.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          perfume.brand.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          perfume.description.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
     setFilteredPerfumes(filtered);
   }, [perfumes, selectedCategory, searchTerm]);
-
-  const handleAddToCart = (perfume: Perfume) => {
-    console.log(perfume);
-    // addToCart({
-    //   id: perfume.id,
-    //   name: perfume.name,
-    //   brand: perfume.brand,
-    //   price: perfume.discount ? perfume.price - (perfume.price * perfume.discount / 100) : perfume.price,
-    //   image: perfume.image,
-    //   discount: perfume.discount
-    // });
-  };
 
   if (loading) {
     return (
@@ -171,7 +192,8 @@ export default function AllPerfumesPage() {
             All <span className="text-iris">Perfumes</span>
           </h1>
           <p className="text-xl text-gray-600 max-w-2xl">
-            Discover our complete collection of luxury fragrances for every occasion and personality
+            Discover our complete collection of luxury fragrances for every
+            occasion and personality
           </p>
         </div>
 
@@ -211,8 +233,6 @@ export default function AllPerfumesPage() {
                 ))}
               </div>
             </div>
-
-
           </div>
         </div>
 
@@ -229,8 +249,12 @@ export default function AllPerfumesPage() {
         {filteredPerfumes.length === 0 ? (
           <div className="text-center py-20">
             <div className="text-6xl mb-4">🔍</div>
-            <h3 className="text-2xl font-bold text-gray-600 mb-2">No perfumes found</h3>
-            <p className="text-gray-500 mb-6">Try adjusting your search or filter criteria</p>
+            <h3 className="text-2xl font-bold text-gray-600 mb-2">
+              No perfumes found
+            </h3>
+            <p className="text-gray-500 mb-6">
+              Try adjusting your search or filter criteria
+            </p>
             <button
               onClick={() => {
                 setSearchTerm("");
@@ -242,13 +266,9 @@ export default function AllPerfumesPage() {
             </button>
           </div>
         ) : (
-          <div className="flex flex-wrap gap-4" >
+          <div className="flex flex-wrap gap-4">
             {filteredPerfumes.map((perfume) => (
-              <PerfumeCard
-                key={perfume.id}
-                {...perfume}
-                className={viewMode === "list" ? "min-w-full" : ""}
-              />
+              <PerfumeCard key={perfume.id} {...perfume} className="" />
             ))}
           </div>
         )}

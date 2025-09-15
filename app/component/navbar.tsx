@@ -29,9 +29,18 @@ export default function Navbar() {
       setIsLoggedIn(false);
     }
     const getCartItems = async () => {
-      const cartItems = await getAllCart();
-      setCartItems(cartItems.cartProducts.length);
-      console.log("cartItems", cartItems);
+      try {
+        const cartData = await getAllCart();
+        const products =
+          (cartData &&
+            (cartData.cartProducts || cartData.products || cartData.items)) ||
+          [];
+        setCartItems(Array.isArray(products) ? products.length : 0);
+        console.log("cartData", cartData);
+      } catch (err) {
+        console.warn("Failed to load cart (treating as empty)", err);
+        setCartItems(0);
+      }
     };
     getCartItems();
   }, []);

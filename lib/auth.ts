@@ -29,10 +29,25 @@ export const setupAxiosInterceptors = () => {
   // Request interceptor to add token to headers
   axios.interceptors.request.use(
     (config) => {
-      const token =
-        localStorage.getItem("authToken") ||
-        localStorage.getItem("adminAuthToken") ||
-        localStorage.getItem("managerAuthToken");
+      // Try to get token based on user role first, then fallback to general token
+      const userRole = localStorage.getItem("userRole");
+      let token: string | null = null;
+
+      switch (userRole) {
+        case "admin":
+          token =
+            localStorage.getItem("adminAuthToken") ||
+            localStorage.getItem("authToken");
+          break;
+        case "manager":
+          token =
+            localStorage.getItem("managerAuthToken") ||
+            localStorage.getItem("authToken");
+          break;
+        default:
+          token = localStorage.getItem("authToken");
+          break;
+      }
 
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
@@ -106,11 +121,15 @@ export const getAuthData = (): AuthState => {
     switch (userRole) {
       case "admin":
         user = JSON.parse(localStorage.getItem("admin") || "null");
-        token = localStorage.getItem("adminAuthToken");
+        token =
+          localStorage.getItem("adminAuthToken") ||
+          localStorage.getItem("authToken");
         break;
       case "manager":
         user = JSON.parse(localStorage.getItem("manager") || "null");
-        token = localStorage.getItem("managerAuthToken");
+        token =
+          localStorage.getItem("managerAuthToken") ||
+          localStorage.getItem("authToken");
         break;
       case "user":
       default:
@@ -173,6 +192,9 @@ export const useAuth = () => {
       localStorage.setItem(tokenKey, token);
       localStorage.setItem(idKey, userData.id);
       localStorage.setItem("userRole", role);
+
+      // Also store in general authToken for compatibility
+      localStorage.setItem("authToken", token);
 
       axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 

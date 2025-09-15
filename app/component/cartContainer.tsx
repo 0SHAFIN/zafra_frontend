@@ -1,9 +1,15 @@
 "use client";
 import { getAllCart, deleteCart } from "@/lib/apiCall";
-import { Minus, Plus, Trash2, ShoppingBag, X, RefreshCw } from "lucide-react";
+import {
+  normalizeCartProducts,
+  NormalizedCartItem,
+} from "@/lib/cartNormalization";
+import { Trash2, ShoppingBag, X, RefreshCw } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
 import { useEffect } from "react";
+import { getImageUrl } from "@/lib/api";
 
 interface CartContainerProps {
   isOpen: boolean;
@@ -11,15 +17,7 @@ interface CartContainerProps {
 }
 
 export default function CartContainer({ isOpen, onClose }: CartContainerProps) {
-  interface CartItem {
-    perfumeName: string;
-    perfumeBrand: string;
-    perfumeImage: string;
-    perfumePrice: number;
-    perfumeQuantity: number;
-  }
-
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [cartItems, setCartItems] = useState<NormalizedCartItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -29,30 +27,50 @@ export default function CartContainer({ isOpen, onClose }: CartContainerProps) {
     const getCartItems = async () => {
       setIsLoading(true);
       setError(null);
-      
+
       try {
         const response = await getAllCart();
         console.log("API Response:", response);
-        if (response.cartProducts.length === 0) {
-          setError("No cart found");
+
+        // Handle empty cart response (cartProducts will be empty array)
+        if (
+          !response.cartProducts ||
+          !Array.isArray(response.cartProducts) ||
+          response.cartProducts.length === 0
+        ) {
           setCartItems([]);
+          setCartId(null);
           return;
         }
+
         setCartId(response.cartId);
         console.log("cartId", response.cartId);
-        setCartItems(response.cartProducts);
-        
-       
+        const normalized = normalizeCartProducts(response.cartProducts, {
+          debug: true,
+        });
+        normalized.forEach((n) => {
+          if (!n.perfumeImage || n.perfumePrice === 0) {
+            console.warn("Cart item missing image or price", n);
+          }
+        });
+        setCartItems(normalized);
       } catch (error) {
         console.error("Error fetching cart:", error);
-        setError("No cart found");
-        setCartItems([]);
-        setCartId(null);
+        // Only set error for actual API failures, not empty carts
+        if (error instanceof Error && error.message.includes("404")) {
+          // 404 means no cart exists yet, which is normal - treat as empty cart
+          setCartItems([]);
+          setCartId(null);
+        } else {
+          setError("Failed to load cart");
+          setCartItems([]);
+          setCartId(null);
+        }
       } finally {
         setIsLoading(false);
       }
-    }
-    
+    };
+
     if (isOpen) {
       getCartItems();
     }
@@ -65,11 +83,11 @@ export default function CartContainer({ isOpen, onClose }: CartContainerProps) {
   const handleClearCart = async () => {
     setIsDeleting(true);
     try {
-      const response = await deleteCart(cartId || '');
+      const response = await deleteCart(cartId || "");
       console.log("response", response);
       setCartItems([]);
       setShowDeleteConfirm(false);
-      
+
       console.log("Cart cleared successfully");
     } catch (error) {
       console.error("Error clearing cart:", error);
@@ -83,22 +101,26 @@ export default function CartContainer({ isOpen, onClose }: CartContainerProps) {
     <>
       {/* Backdrop */}
       {isOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 backdrop-blur-xs z-40 transition-opacity duration-300"
           onClick={onClose}
         />
       )}
 
       {/* Cart Sidebar */}
-      <div className={`fixed top-0 right-0 h-full w-full max-w-md bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${
-        isOpen ? 'translate-x-0' : 'translate-x-full'
-      }`}>
+      <div
+        className={`fixed top-0 right-0 h-full w-full max-w-md bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${
+          isOpen ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
         <div className="flex flex-col h-full">
           {/* Header */}
           <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-iris to-periwinkle">
             <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-bold text-gray-800">Shopping Cart</h2>
-              <div className="flex items-center gap-2">                              
+              <h2 className="text-2xl font-bold text-gray-800">
+                Shopping Cart
+              </h2>
+              <div className="flex items-center gap-2">
                 <button
                   onClick={onClose}
                   className="text-white hover:text-gray-200 transition-colors p-2"
@@ -107,39 +129,64 @@ export default function CartContainer({ isOpen, onClose }: CartContainerProps) {
                 </button>
               </div>
             </div>
-      
           </div>
-            
+
           {/* Cart Items */}
           <div className="flex-1 overflow-y-auto p-6">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 <RefreshCw className="w-16 h-16 text-gray-400 mb-4 animate-spin" />
-                <h3 className="text-lg font-semibold text-gray-600 mb-2">Loading cart...</h3>
-                <p className="text-gray-500">Please wait while we fetch your items</p>
+                <h3 className="text-lg font-semibold text-gray-600 mb-2">
+                  Loading cart...
+                </h3>
+                <p className="text-gray-500">
+                  Please wait while we fetch your items
+                </p>
               </div>
-            )  : cartItems.length === 0 ? (
+            ) : error ? (
+              <div className="flex flex-col items-center justify-center h-full text-center">
+                <ShoppingBag className="w-16 h-16 text-red-400 mb-4" />
+                <h3 className="text-lg font-semibold text-red-600 mb-2">
+                  Error loading cart
+                </h3>
+                <p className="text-red-500">{error}</p>
+              </div>
+            ) : cartItems.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 <ShoppingBag className="w-16 h-16 text-gray-400 mb-4" />
-                <h3 className="text-lg font-semibold text-gray-600 mb-2">Your cart is empty</h3>
-                <p className="text-gray-500">Add some perfumes to get started!</p>
+                <h3 className="text-lg font-semibold text-gray-600 mb-2">
+                  Your cart is empty
+                </h3>
+                <p className="text-gray-500">
+                  Add some perfumes to get started!
+                </p>
               </div>
             ) : (
               <div className="space-y-3">
-                {cartItems.map((item: CartItem, index: number) => (
-                  <div key={`${item.perfumeName}-${index}`} className="bg-lavender rounded-lg p-3 flex items-center gap-3">
-                    <div className="w-12 h-12 bg-white rounded-lg overflow-hidden flex-shrink-0">
-                      <img 
-                        src={item.perfumeImage} 
-                        alt={item.perfumeName} 
-                        className="w-full h-full object-cover" 
+                {cartItems.map((item, index) => (
+                  <div
+                    key={`${item.perfumeName}-${index}`}
+                    className="bg-lavender rounded-lg p-3 flex items-center gap-3"
+                  >
+                    <div className="w-12 h-12 bg-white rounded-lg overflow-hidden flex-shrink-0 relative">
+                      <Image
+                        src={getImageUrl(item.perfumeImage)}
+                        alt={item.perfumeName || "Cart item image"}
+                        fill
+                        className="object-cover"
                       />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-sm font-bold text-gray-800 truncate">{item.perfumeName}</h3>
-                      <p className="text-xs text-gray-600 truncate">{item.perfumeBrand}</p>
+                      <h3 className="text-sm font-bold text-gray-800 truncate">
+                        {item.perfumeName}
+                      </h3>
+                      <p className="text-xs text-gray-600 truncate">
+                        {item.perfumeBrand}
+                      </p>
                       <div className="flex items-center justify-between mt-1">
-                        <p className="text-xs font-semibold text-iris">${item.perfumePrice}</p>
+                        <p className="text-xs font-semibold text-iris">
+                          ${item.perfumePrice}
+                        </p>
                         <span className="text-xs bg-white px-2 py-1 rounded-full text-gray-700 font-medium">
                           Qty: {item.perfumeQuantity}
                         </span>
@@ -157,19 +204,26 @@ export default function CartContainer({ isOpen, onClose }: CartContainerProps) {
               <div className="flex justify-between items-center mb-4">
                 <span className="text-lg font-semibold">Total:</span>
                 <span className="text-xl font-bold text-iris">
-                  ${cartItems.reduce((total, item) => total + (item.perfumePrice * item.perfumeQuantity), 0).toFixed(2)}
+                  $
+                  {cartItems
+                    .reduce(
+                      (total, item) =>
+                        total + item.perfumePrice * item.perfumeQuantity,
+                      0
+                    )
+                    .toFixed(2)}
                 </span>
               </div>
-              
+
               <div className="space-y-3">
-                <Link 
-                  href="/checkout" 
+                <Link
+                  href="/checkout"
                   className="w-full bg-iris text-white py-3 px-6 rounded-lg font-semibold text-center block hover:bg-opacity-90 transition-colors"
                   onClick={onClose}
                 >
                   Proceed to Checkout
                 </Link>
-                
+
                 <button
                   onClick={() => setShowDeleteConfirm(true)}
                   className="w-full bg-red-500 text-white py-2 px-6 rounded-lg font-semibold text-center hover:bg-red-600 transition-colors flex items-center justify-center gap-2"
@@ -180,7 +234,6 @@ export default function CartContainer({ isOpen, onClose }: CartContainerProps) {
               </div>
             </div>
           )}
-      
         </div>
       </div>
 
@@ -192,13 +245,16 @@ export default function CartContainer({ isOpen, onClose }: CartContainerProps) {
               <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
                 <Trash2 className="w-5 h-5 text-red-600" />
               </div>
-              <h3 className="text-lg font-semibold text-gray-800">Clear Cart</h3>
+              <h3 className="text-lg font-semibold text-gray-800">
+                Clear Cart
+              </h3>
             </div>
-            
+
             <p className="text-gray-600 mb-6">
-              Are you sure you want to remove all items from your cart? This action cannot be undone.
+              Are you sure you want to remove all items from your cart? This
+              action cannot be undone.
             </p>
-            
+
             <div className="flex gap-3">
               <button
                 onClick={() => setShowDeleteConfirm(false)}

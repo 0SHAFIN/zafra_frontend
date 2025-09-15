@@ -1,20 +1,19 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
-import axios from "axios";
+import Link from "next/link";
+import Image from "next/image";
+import { getImageUrl } from "@/lib/api";
 
 import {
   ShoppingCart,
-  Heart,
   Truck,
   Shield,
   RotateCcw,
   Minus,
   Plus,
-  ArrowRight,
 } from "lucide-react";
-import PerfumeCard from "../../component/perfume-card";
-import { getPerfumeById, getAllPerfumes, addToCart } from "@/lib/apiCall";
+import { getPerfumeById, addToCart } from "@/lib/apiCall";
 
 interface Perfume {
   id: string;
@@ -32,13 +31,11 @@ export default function PerfumeDetailPage() {
   const params = useParams();
   const perfumeId = params.id as string;
   const [perfume, setPerfume] = useState<Perfume | null>(null);
-  const [relatedPerfumes, setRelatedPerfumes] = useState<Perfume[]>([]);
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
-  const [selectedImage, setSelectedImage] = useState(0);
-  const [isWishlisted, setIsWishlisted] = useState(false);
+  const [selectedImage] = useState(0);
 
-  const images = [perfume?.image || "🌸"];
+  const images = [getImageUrl(perfume?.image)];
 
   useEffect(() => {
     const fetchPerfume = async () => {
@@ -48,16 +45,6 @@ export default function PerfumeDetailPage() {
         const perfumeData = await getPerfumeById(perfumeId);
         console.log("perfume data", perfumeData);
         setPerfume(perfumeData);
-
-        // Fetch related perfumes (all perfumes for now, could be filtered by category later)
-        const allPerfumes = await getAllPerfumes();
-        const related = allPerfumes
-          .filter(
-            (p: Perfume) =>
-              p.id !== perfumeId && p.category === perfumeData.category
-          )
-          .slice(0, 4);
-        setRelatedPerfumes(related);
       } catch (error) {
         console.error("Error fetching perfume:", error);
       } finally {
@@ -74,11 +61,16 @@ export default function PerfumeDetailPage() {
     console.log("perfume", perfume);
   }, [perfume]);
 
-  const handleAddToCart = () => {
-    console.log("quantity", quantity);
+  const handleAddToCart = async () => {
     if (perfume) {
-      for (let i = 0; i < quantity; i++) {
-        addToCart(quantity, perfume.price, perfume.id);
+      console.log("Adding to cart:", { perfumeId: perfume.id, quantity });
+      try {
+        await addToCart(perfume.id, quantity, perfume.price);
+        // You could add a success message or toast here
+        console.log("Successfully added to cart");
+      } catch (error) {
+        console.error("Error adding to cart:", error);
+        // You could add an error message or toast here
       }
     }
   };
@@ -108,7 +100,7 @@ export default function PerfumeDetailPage() {
               Perfume not found
             </h3>
             <p className="text-gray-500">
-              The perfume you're looking for doesn't exist.
+              The perfume you&apos;re looking for doesn&apos;t exist.
             </p>
           </div>
         </div>
@@ -127,13 +119,16 @@ export default function PerfumeDetailPage() {
         {/* Breadcrumb */}
         <nav className="mb-8">
           <div className="flex items-center space-x-2 text-sm text-gray-600">
-            <a href="/" className="hover:text-iris transition-colors">
+            <Link href="/" className="hover:text-iris transition-colors">
               Home
-            </a>
+            </Link>
             <span>/</span>
-            <a href="/perfumes" className="hover:text-iris transition-colors">
+            <Link
+              href="/perfumes"
+              className="hover:text-iris transition-colors"
+            >
               Perfumes
-            </a>
+            </Link>
             <span>/</span>
             <span className="text-gray-800">{perfume.name}</span>
           </div>
@@ -142,16 +137,14 @@ export default function PerfumeDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-16">
           {/* Image Gallery */}
           <div className="space-y-4">
-            <div className="aspect-square bg-white rounded-2xl overflow-hidden shadow-lg">
-              <img
+            <div className="aspect-square bg-white rounded-2xl overflow-hidden shadow-lg relative">
+              <Image
                 src={images[selectedImage]}
                 alt={perfume.name}
-                className="w-full h-full object-contain"
+                fill
+                className="object-contain"
                 onError={(e) => {
                   e.currentTarget.style.display = "none";
-                  e.currentTarget.nextElementSibling?.classList.remove(
-                    "hidden"
-                  );
                 }}
               />
             </div>

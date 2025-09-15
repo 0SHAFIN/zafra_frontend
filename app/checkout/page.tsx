@@ -1,26 +1,18 @@
 "use client";
 import { useState, useEffect } from "react";
-import { getAllCart, createOrder } from "@/lib/apiCall";
+import { getAllCart, createOrderFromCart } from "@/lib/apiCall";
 import {
-  CreditCard,
-  MapPin,
-  User,
-  Phone,
-  Mail,
-  ArrowLeft,
-  CheckCircle,
-} from "lucide-react";
+  normalizeCartProducts,
+  NormalizedCartItem,
+} from "@/lib/cartNormalization";
+import { getImageUrl } from "@/lib/api";
+import { User, ArrowLeft, CheckCircle } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useAuthCheck } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 
-interface CartItem {
-  perfumeName: string;
-  perfumeBrand: string;
-  perfumeImage: string;
-  perfumePrice: number;
-  perfumeQuantity: number;
-}
+type CartItem = NormalizedCartItem;
 
 interface CheckoutForm {
   name: string;
@@ -33,14 +25,20 @@ interface CheckoutForm {
   cardName: string;
 }
 
+interface UserData {
+  fullName?: string;
+  firstName?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+}
+
 export default function CheckoutPage() {
   const router = useRouter();
   const { isAuthenticated, isLoading } = useAuthCheck();
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
-  const [isLoadingCart, setIsLoadingCart] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderComplete, setOrderComplete] = useState(false);
-  const [customerData, setCustomerData] = useState<any>(null);
   const [cartId, setCartId] = useState<string | null>(null);
   const [formData, setFormData] = useState<CheckoutForm>({
     name: "",
@@ -63,9 +61,8 @@ export default function CheckoutPage() {
   useEffect(() => {
     const userData = localStorage.getItem("user");
     if (userData) {
-      const parsedData = JSON.parse(userData);
+      const parsedData: UserData = JSON.parse(userData);
       console.log("userData", parsedData);
-      setCustomerData(parsedData);
 
       // Populate form with customer data from localStorage
       setFormData((prev) => ({
@@ -80,26 +77,35 @@ export default function CheckoutPage() {
   useEffect(() => {
     console.log("formData", formData);
   }, [formData]);
+
   useEffect(() => {
     const getCartItems = async () => {
-      setIsLoadingCart(true);
-
       try {
         const response = await getAllCart();
         console.log("API Response:", response);
-        if (response.cartProducts.length === 0) {
+
+        // Handle empty cart response
+        if (!response.cartProducts || response.cartProducts.length === 0) {
           setCartItems([]);
+          setCartId(null);
           return;
         }
 
-        setCartItems(response.cartProducts);
+        const normalized = normalizeCartProducts(response.cartProducts, {
+          debug: true,
+        });
+        normalized.forEach((n) => {
+          if (!n.perfumeImage || n.perfumePrice === 0) {
+            console.warn("Checkout item missing image or price", n);
+          }
+        });
+        setCartItems(normalized);
         console.log("cartId", response.cartId);
         setCartId(response.cartId);
       } catch (error) {
-        console.error("Error fetching cart:", error);
+        console.error("Error fetching cart items:", error);
         setCartItems([]);
-      } finally {
-        setIsLoadingCart(false);
+        setCartId(null);
       }
     };
 
@@ -137,19 +143,35 @@ export default function CheckoutPage() {
     setIsSubmitting(true);
 
     try {
-      const orderData = {
-        name: formData.name,
-        email: formData.email,
-        phone: formData.phone,
-        address: formData.address,
-      };
+      const customerId = localStorage.getItem("customerId");
 
-      const response = await createOrder(cartId || "", orderData);
-      console.log("Order created:", response);
+      if (!customerId) {
+        throw new Error("Customer ID not found. Please log in again.");
+      }
+
+      if (!cartId) {
+        alert("No items in cart. Please add some items before checking out.");
+        return;
+      }
+
+      // Prefer cart-based order creation first (/orders/from-cart)
+      console.log("Creating order from cart", {
+        cartId,
+        shippingAddress: formData.address,
+      });
+      const response = await createOrderFromCart(cartId, {
+        shippingAddress: formData.address,
+        customerPhone: formData.phone,
+        customerEmail: formData.email,
+        customerName: formData.name,
+      });
+      console.log("Order (from cart) created:", response);
       setOrderComplete(true);
     } catch (error) {
       console.error("Error creating order:", error);
-      alert("Failed to create order. Please try again.");
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      alert(`Failed to create order: ${errorMessage}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -330,11 +352,12 @@ export default function CheckoutPage() {
             <div className="space-y-3 mb-6">
               {cartItems.map((item, index) => (
                 <div key={index} className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden">
-                    <img
-                      src={item.perfumeImage}
-                      alt={item.perfumeName}
-                      className="w-full h-full object-cover"
+                  <div className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden relative">
+                    <Image
+                      src={getImageUrl(item.perfumeImage)}
+                      alt={item.perfumeName || "Perfume image"}
+                      fill
+                      className="object-cover"
                     />
                   </div>
                   <div className="flex-1">

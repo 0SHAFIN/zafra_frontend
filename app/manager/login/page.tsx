@@ -68,7 +68,7 @@ export default function ManagerLoginPage() {
     try {
       console.log("Manager login form data:", formData);
       const response = await axios.post(
-        "http://localhost:3000/admin/auth/login",
+        "http://localhost:3000/admin/auth/login", // Same endpoint for both admin and manager
         formData,
         {
           headers: {
@@ -81,20 +81,51 @@ export default function ManagerLoginPage() {
       console.log("Manager login response:", result);
 
       // Store token if provided
-      if (result.access_token) {
-        console.log("manager/admin response", result);
+      if (result.access_token || result.accessToken || result.token) {
+        console.log("Token found, processing manager data...");
 
-        // Handle both manager and admin roles
-        const user = result.admin || result.manager || result.user || result;
+        const token = result.access_token || result.accessToken || result.token;
+
+        // Backend returns user object with id, email, name, role
+        const user = result.user || result.data || result;
+
+        if (!user || (!user.email && !result.email)) {
+          console.error("No user object in response");
+          setErrors({
+            general: "Invalid response from server. Please try again.",
+          });
+          return;
+        }
+
+        // Handle case where user data might be at the root level
+        const userData = user.email
+          ? user
+          : {
+              id: result.id || user.id,
+              email: result.email || user.email,
+              name: result.name || user.name,
+              role: result.role || user.role,
+            };
 
         // Check if the user has manager or admin role
-        const userRole = user.role || "manager";
+        const userRole = userData.role;
+        console.log("User role:", userRole);
 
+        // Allow manager or admin roles for manager login
         if (userRole === "admin" || userRole === "manager") {
+          // Map backend user structure to frontend AuthUser structure
+          const mappedUser = {
+            id: String(user.id), // Convert to string if needed
+            email: user.email,
+            fullName: user.name,
+            role: user.role,
+          };
+
           // Store as manager data for manager dashboard
-          localStorage.setItem("manager", JSON.stringify(user));
-          localStorage.setItem("managerId", user.id);
-          localStorage.setItem("managerAuthToken", result.access_token);
+          localStorage.setItem("manager", JSON.stringify(mappedUser));
+          localStorage.setItem("managerId", String(user.id));
+          localStorage.setItem("managerAuthToken", token); // Use manager-specific token key
+          localStorage.setItem("authToken", token); // Also store in general key for compatibility
           localStorage.setItem("userRole", "manager");
 
           // Set authorization header for future requests

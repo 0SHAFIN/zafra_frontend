@@ -1,5 +1,6 @@
 import "./globals.css";
 import LayoutWrapper from "./component/layoutwrapper";
+import { ToastProvider } from "./component/ui/ToastProvider";
 
 export default function RootLayout({
   children,
@@ -9,7 +10,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body suppressHydrationWarning={true}>
-        <LayoutWrapper>{children}</LayoutWrapper>
+        <ToastProvider>
+          <LayoutWrapper>{children}</LayoutWrapper>
+        </ToastProvider>
       </body>
     </html>
   );

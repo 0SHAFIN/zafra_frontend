@@ -1,10 +1,33 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { User, Mail, Phone, MapPin, Edit3, Save, X, LogOut, ShoppingBag, Heart, Settings, Package, Calendar, DollarSign, CheckCircle, AlertCircle } from "lucide-react";
+import {
+  User,
+  Mail,
+  Phone,
+  MapPin,
+  Edit3,
+  Save,
+  X,
+  LogOut,
+  ShoppingBag,
+  Heart,
+  Settings,
+  Package,
+  Calendar,
+  DollarSign,
+  CheckCircle,
+  AlertCircle,
+} from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import axios from "axios";
 import { updateCustomer } from "@/lib/apiCall";
+import { getImageUrl } from "@/lib/api";
+import {
+  normalizeCartProducts,
+  NormalizedCartItem,
+} from "@/lib/cartNormalization";
 
 interface CustomerData {
   id: string;
@@ -17,13 +40,7 @@ interface CustomerData {
   updatedAt?: string;
 }
 
-interface OrderItem {
-  perfumeName: string;
-  perfumeBrand: string;
-  perfumeImage: string;
-  perfumePrice: number;
-  perfumeQuantity: number;
-}
+type OrderItem = NormalizedCartItem;
 
 interface Order {
   orderId: string;
@@ -41,7 +58,7 @@ interface Order {
 
 interface Toast {
   id: string;
-  type: 'success' | 'error' | 'info';
+  type: "success" | "error" | "info";
   message: string;
   duration?: number;
 }
@@ -55,7 +72,7 @@ export default function CustomerProfilePage() {
   const [editData, setEditData] = useState<Partial<CustomerData>>({});
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState("profile");
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   useEffect(() => {
@@ -90,22 +107,35 @@ export default function CustomerProfilePage() {
         {
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          }
+            Authorization: `Bearer ${token}`,
+          },
         }
       );
       const ordersData = await response.data;
       console.log("ordersData", ordersData);
-      
+
       // Ensure ordersData is always an array
-      if (Array.isArray(ordersData)) {
-        setOrders(ordersData);
-      } else if (ordersData && typeof ordersData === 'object') {
-        // If it's a single order object, wrap it in an array
-        setOrders([ordersData]);
-      } else {
-        setOrders([]);
-      }
+      const list: unknown[] = Array.isArray(ordersData)
+        ? ordersData
+        : ordersData && typeof ordersData === "object"
+        ? [ordersData]
+        : [];
+      // Normalize each order's products
+      const normalizedOrders: Order[] = list
+        .filter(
+          (o): o is Record<string, unknown> => !!o && typeof o === "object"
+        )
+        .map((o) => {
+          const rawProducts = Array.isArray(o.orderProducts)
+            ? (o.orderProducts as unknown[])
+            : [];
+          const products = normalizeCartProducts(rawProducts, { debug: true });
+          return {
+            ...(o as Record<string, unknown>),
+            orderProducts: products,
+          } as Order;
+        });
+      setOrders(normalizedOrders as Order[]);
     } catch (error) {
       console.error("Error fetching orders:", error);
       // Set empty array if API fails
@@ -134,13 +164,13 @@ export default function CustomerProfilePage() {
 
     setIsSaving(true);
     try {
-      const body={
+      const body = {
         customerID: customerData.id,
-        ...editData
-      }
+        ...editData,
+      };
       console.log("body", body);
-     const response = await updateCustomer(body);
-      
+      const response = await updateCustomer(body);
+
       console.log("response", response);
 
       if (response) {
@@ -148,14 +178,14 @@ export default function CustomerProfilePage() {
         setCustomerData(updatedData);
         localStorage.setItem("user", JSON.stringify(updatedData));
         setIsEditing(false);
-        addToast('success', 'Profile updated successfully!');
+        addToast("success", "Profile updated successfully!");
       } else {
         console.error("Failed to update profile");
-        addToast('error', 'Failed to update profile. Please try again.');
+        addToast("error", "Failed to update profile. Please try again.");
       }
     } catch (error) {
       console.error("Error updating profile:", error);
-      addToast('error', 'Error updating profile. Please try again.');
+      addToast("error", "Error updating profile. Please try again.");
     } finally {
       setIsSaving(false);
     }
@@ -168,15 +198,19 @@ export default function CustomerProfilePage() {
   };
 
   const handleInputChange = (field: keyof CustomerData, value: string) => {
-    setEditData(prev => ({ ...prev, [field]: value }));
+    setEditData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const addToast = (type: 'success' | 'error' | 'info', message: string, duration = 5000) => {
+  const addToast = (
+    type: "success" | "error" | "info",
+    message: string,
+    duration = 5000
+  ) => {
     const id = Math.random().toString(36).substr(2, 9);
     const newToast: Toast = { id, type, message, duration };
-    
-    setToasts(prev => [...prev, newToast]);
-    
+
+    setToasts((prev) => [...prev, newToast]);
+
     // Auto remove toast after duration
     setTimeout(() => {
       removeToast(id);
@@ -184,17 +218,23 @@ export default function CustomerProfilePage() {
   };
 
   const removeToast = (id: string) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id));
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
   };
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'processing': return 'bg-blue-100 text-blue-800';
-      case 'shipped': return 'bg-purple-100 text-purple-800';
-      case 'delivered': return 'bg-green-100 text-green-800';
-      case 'cancelled': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case "pending":
+        return "bg-yellow-100 text-yellow-800";
+      case "processing":
+        return "bg-blue-100 text-blue-800";
+      case "shipped":
+        return "bg-purple-100 text-purple-800";
+      case "delivered":
+        return "bg-green-100 text-green-800";
+      case "cancelled":
+        return "bg-red-100 text-red-800";
+      default:
+        return "bg-gray-100 text-gray-800";
     }
   };
 
@@ -210,7 +250,9 @@ export default function CustomerProfilePage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-iris/10 to-white flex items-center justify-center">
         <div className="text-center bg-white p-8 rounded-2xl shadow-lg">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">No Profile Found</h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4">
+            No Profile Found
+          </h2>
           <Link href="/login" className="text-iris hover:underline">
             Please login to view your profile
           </Link>
@@ -226,7 +268,9 @@ export default function CustomerProfilePage() {
         <div className="bg-white rounded-3xl shadow-lg p-8 mb-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-6">
             <div>
-              <h1 className="text-4xl font-bold text-gray-800 mb-2">{customerData.fullName}</h1>
+              <h1 className="text-4xl font-bold text-gray-800 mb-2">
+                {customerData.fullName}
+              </h1>
               <p className="text-gray-600 flex items-center gap-2">
                 <Mail className="w-4 h-4" />
                 {customerData.email}
@@ -264,7 +308,7 @@ export default function CustomerProfilePage() {
                 onClick={handleLogout}
                 className="flex items-center gap-2 px-6 py-3 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-all duration-300 hover:scale-105"
               >
-                 <LogOut className="w-4 h-4" />
+                <LogOut className="w-4 h-4" />
                 Sign Out
               </button>
             </div>
@@ -275,25 +319,31 @@ export default function CustomerProfilePage() {
         <div className="bg-white rounded-3xl shadow-lg mb-8">
           <div className="flex overflow-x-auto">
             <button
-              onClick={() => setActiveTab('profile')}
+              onClick={() => setActiveTab("profile")}
               className={`flex-1 py-4 px-6 text-center font-semibold transition-colors ${
-                activeTab === 'profile' ? 'text-iris border-b-2 border-iris' : 'text-gray-600 hover:text-iris'
+                activeTab === "profile"
+                  ? "text-iris border-b-2 border-iris"
+                  : "text-gray-600 hover:text-iris"
               }`}
             >
               Profile Details
             </button>
             <button
-              onClick={() => setActiveTab('orders')}
+              onClick={() => setActiveTab("orders")}
               className={`flex-1 py-4 px-6 text-center font-semibold transition-colors ${
-                activeTab === 'orders' ? 'text-iris border-b-2 border-iris' : 'text-gray-600 hover:text-iris'
+                activeTab === "orders"
+                  ? "text-iris border-b-2 border-iris"
+                  : "text-gray-600 hover:text-iris"
               }`}
             >
               Order History
             </button>
             <button
-              onClick={() => setActiveTab('settings')}
+              onClick={() => setActiveTab("settings")}
               className={`flex-1 py-4 px-6 text-center font-semibold transition-colors ${
-                activeTab === 'settings' ? 'text-iris border-b-2 border-iris' : 'text-gray-600 hover:text-iris'
+                activeTab === "settings"
+                  ? "text-iris border-b-2 border-iris"
+                  : "text-gray-600 hover:text-iris"
               }`}
             >
               Settings
@@ -303,7 +353,7 @@ export default function CustomerProfilePage() {
 
         {/* Content Area */}
         <div className="bg-white rounded-3xl shadow-lg p-8">
-          {activeTab === 'profile' && (
+          {activeTab === "profile" && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               {/* Profile Information */}
               <div className="lg:col-span-2 space-y-6">
@@ -316,11 +366,15 @@ export default function CustomerProfilePage() {
                     <input
                       type="text"
                       value={editData.fullName || ""}
-                      onChange={(e) => handleInputChange("fullName", e.target.value)}
+                      onChange={(e) =>
+                        handleInputChange("fullName", e.target.value)
+                      }
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-iris focus:border-transparent"
                     />
                   ) : (
-                    <p className="text-gray-800 text-lg">{customerData.fullName}</p>
+                    <p className="text-gray-800 text-lg">
+                      {customerData.fullName}
+                    </p>
                   )}
                 </div>
 
@@ -334,11 +388,15 @@ export default function CustomerProfilePage() {
                     <input
                       type="email"
                       value={editData.email || ""}
-                      onChange={(e) => handleInputChange("email", e.target.value)}
+                      onChange={(e) =>
+                        handleInputChange("email", e.target.value)
+                      }
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-iris focus:border-transparent"
                     />
                   ) : (
-                    <p className="text-gray-800 text-lg">{customerData.email}</p>
+                    <p className="text-gray-800 text-lg">
+                      {customerData.email}
+                    </p>
                   )}
                 </div>
 
@@ -352,11 +410,15 @@ export default function CustomerProfilePage() {
                     <input
                       type="tel"
                       value={editData.phone || ""}
-                      onChange={(e) => handleInputChange("phone", e.target.value)}
+                      onChange={(e) =>
+                        handleInputChange("phone", e.target.value)
+                      }
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-iris focus:border-transparent"
                     />
                   ) : (
-                    <p className="text-gray-800 text-lg">{customerData.phone}</p>
+                    <p className="text-gray-800 text-lg">
+                      {customerData.phone}
+                    </p>
                   )}
                 </div>
 
@@ -369,12 +431,16 @@ export default function CustomerProfilePage() {
                   {isEditing ? (
                     <textarea
                       value={editData.address || ""}
-                      onChange={(e) => handleInputChange("address", e.target.value)}
+                      onChange={(e) =>
+                        handleInputChange("address", e.target.value)
+                      }
                       rows={3}
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-iris focus:border-transparent resize-none"
                     />
                   ) : (
-                    <p className="text-gray-800 text-lg">{customerData.address}</p>
+                    <p className="text-gray-800 text-lg">
+                      {customerData.address}
+                    </p>
                   )}
                 </div>
 
@@ -392,18 +458,33 @@ export default function CustomerProfilePage() {
               {/* Account Information Card */}
               <div className="space-y-6">
                 <div className="bg-gray-50 rounded-xl p-6">
-                  <h3 className="text-lg font-bold text-gray-800 mb-4">Account Information</h3>
+                  <h3 className="text-lg font-bold text-gray-800 mb-4">
+                    Account Information
+                  </h3>
                   <div className="space-y-2 text-sm text-gray-600">
-                    <p><span className="font-semibold">Member since:</span> {customerData.createdAt ? new Date(customerData.createdAt).toLocaleDateString() : "N/A"}</p>
-                    <p><span className="font-semibold">Last updated:</span> {customerData.updatedAt ? new Date(customerData.updatedAt).toLocaleDateString() : "N/A"}</p>
-                    <p><span className="font-semibold">Account ID:</span> {customerData.id}</p>
+                    <p>
+                      <span className="font-semibold">Member since:</span>{" "}
+                      {customerData.createdAt
+                        ? new Date(customerData.createdAt).toLocaleDateString()
+                        : "N/A"}
+                    </p>
+                    <p>
+                      <span className="font-semibold">Last updated:</span>{" "}
+                      {customerData.updatedAt
+                        ? new Date(customerData.updatedAt).toLocaleDateString()
+                        : "N/A"}
+                    </p>
+                    <p>
+                      <span className="font-semibold">Account ID:</span>{" "}
+                      {customerData.id}
+                    </p>
                   </div>
                 </div>
               </div>
             </div>
           )}
 
-          {activeTab === 'orders' && (
+          {activeTab === "orders" && (
             <div className="space-y-6">
               {/* Orders content */}
               {ordersLoading ? (
@@ -413,8 +494,12 @@ export default function CustomerProfilePage() {
               ) : orders.length === 0 ? (
                 <div className="text-center py-8">
                   <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                  <h3 className="text-xl font-semibold text-gray-600 mb-2">No Orders Yet</h3>
-                  <p className="text-gray-500 mb-6">Start shopping to see your orders here!</p>
+                  <h3 className="text-xl font-semibold text-gray-600 mb-2">
+                    No Orders Yet
+                  </h3>
+                  <p className="text-gray-500 mb-6">
+                    Start shopping to see your orders here!
+                  </p>
                   <Link
                     href="/perfumes"
                     className="bg-iris text-white px-6 py-3 rounded-xl font-semibold hover:bg-opacity-90 transition-all duration-300 hover:scale-105"
@@ -425,65 +510,105 @@ export default function CustomerProfilePage() {
               ) : (
                 <div className="space-y-6">
                   {orders.map((order) => (
-                    <div key={order.orderId} className="border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all duration-300">
+                    <div
+                      key={order.orderId}
+                      className="border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all duration-300"
+                    >
                       <div className="flex justify-between items-start mb-4">
                         <div>
-                          <h3 className="text-lg font-semibold text-gray-800">Order #{order.orderId}</h3>
+                          <h3 className="text-lg font-semibold text-gray-800">
+                            Order #{order.orderId}
+                          </h3>
                           <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
                             <div className="flex items-center gap-1">
                               <Calendar className="w-4 h-4" />
                               {new Date(order.orderDate).toLocaleDateString()}
                             </div>
                             <div className="flex items-center gap-1">
-                              <DollarSign className="w-4 h-4" />
-                              ${parseFloat(order.orderTotal).toFixed(2)}
+                              <DollarSign className="w-4 h-4" />$
+                              {parseFloat(order.orderTotal).toFixed(2)}
                             </div>
                           </div>
                         </div>
                         <div className="flex flex-col gap-2">
-                          <span className={`px-3 py-1 rounded-full text-sm font-semibold capitalize ${getStatusColor(order.orderStatus)}`}>
+                          <span
+                            className={`px-3 py-1 rounded-full text-sm font-semibold capitalize ${getStatusColor(
+                              order.orderStatus
+                            )}`}
+                          >
                             {order.orderStatus}
                           </span>
-                          <span className={`px-3 py-1 rounded-full text-sm font-semibold capitalize ${
-                            order.paymentStatus === 'paid' ? 'bg-green-100 text-green-800' : 
-                            order.paymentStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
-                            'bg-red-100 text-red-800'
-                          }`}>
+                          <span
+                            className={`px-3 py-1 rounded-full text-sm font-semibold capitalize ${
+                              order.paymentStatus === "paid"
+                                ? "bg-green-100 text-green-800"
+                                : order.paymentStatus === "pending"
+                                ? "bg-yellow-100 text-yellow-800"
+                                : "bg-red-100 text-red-800"
+                            }`}
+                          >
                             {order.paymentStatus}
                           </span>
-                          <span className={`px-3 py-1 rounded-full text-sm font-semibold capitalize ${
-                            order.deliveryStatus ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {order.deliveryStatus ? 'Delivered' : 'Not Delivered'}
+                          <span
+                            className={`px-3 py-1 rounded-full text-sm font-semibold capitalize ${
+                              order.deliveryStatus
+                                ? "bg-green-100 text-green-800"
+                                : "bg-gray-100 text-gray-800"
+                            }`}
+                          >
+                            {order.deliveryStatus
+                              ? "Delivered"
+                              : "Not Delivered"}
                           </span>
                         </div>
                       </div>
 
                       <div className="space-y-3">
                         {order.orderProducts.map((item, index) => (
-                          <div key={index} className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
+                          <div
+                            key={index}
+                            className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg"
+                          >
                             <div className="w-16 h-16 bg-white rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0">
                               {item.perfumeImage ? (
-                                <img
-                                  src={item.perfumeImage}
+                                <Image
+                                  src={getImageUrl(item.perfumeImage)}
                                   alt={item.perfumeName}
+                                  width={64}
+                                  height={64}
                                   className="w-full h-full object-contain"
-                                  onError={(e) => {
-                                    e.currentTarget.style.display = 'none';
-                                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                                  }}
                                 />
                               ) : null}
-                           
                             </div>
                             <div className="flex-1">
-                              <h4 className="font-semibold text-gray-800">{item.perfumeName}</h4>
-                              <p className="text-sm text-gray-600">Brand: {item.perfumeBrand}</p>
-                              <p className="text-sm text-gray-600">Quantity: {item.perfumeQuantity}</p>
+                              <h4 className="font-semibold text-gray-800">
+                                {item.perfumeName}
+                              </h4>
+                              <p className="text-sm text-gray-600">
+                                Brand: {item.perfumeBrand}
+                              </p>
+                              <p className="text-sm text-gray-600">
+                                Quantity: {item.perfumeQuantity}
+                              </p>
                             </div>
                             <div className="text-right">
-                              <p className="font-semibold text-gray-800">${(item.perfumePrice * item.perfumeQuantity).toFixed(2)}</p>
-                              <p className="text-sm text-gray-600">${item.perfumePrice.toFixed(2)} each</p>
+                              {(() => {
+                                const qty = item.perfumeQuantity || 0;
+                                const unit = item.perfumePrice || 0;
+                                const line = +(unit * qty).toFixed(2);
+                                return (
+                                  <>
+                                    <p className="font-semibold text-gray-800">
+                                      ${line.toFixed(2)}
+                                    </p>
+                                    <p className="text-sm text-gray-600">
+                                      {unit
+                                        ? `$${unit.toFixed(2)} each`
+                                        : "Price N/A"}
+                                    </p>
+                                  </>
+                                );
+                              })()}
                             </div>
                           </div>
                         ))}
@@ -492,13 +617,27 @@ export default function CustomerProfilePage() {
                       <div className="mt-4 pt-4 border-t border-gray-200">
                         <div className="flex justify-between items-center text-sm text-gray-600">
                           <div>
-                            <p><span className="font-semibold">Customer:</span> {order.customerName}</p>
-                            <p><span className="font-semibold">Email:</span> {order.customerEmail}</p>
-                            <p><span className="font-semibold">Phone:</span> {order.customerPhone}</p>
-                            <p><span className="font-semibold">Address:</span> {order.customerAddress}</p>
+                            <p>
+                              <span className="font-semibold">Customer:</span>{" "}
+                              {order.customerName}
+                            </p>
+                            <p>
+                              <span className="font-semibold">Email:</span>{" "}
+                              {order.customerEmail}
+                            </p>
+                            <p>
+                              <span className="font-semibold">Phone:</span>{" "}
+                              {order.customerPhone}
+                            </p>
+                            <p>
+                              <span className="font-semibold">Address:</span>{" "}
+                              {order.customerAddress}
+                            </p>
                           </div>
                           <div className="text-right">
-                            <p className="text-lg font-bold text-gray-800">Total: ${parseFloat(order.orderTotal).toFixed(2)}</p>
+                            <p className="text-lg font-bold text-gray-800">
+                              Total: ${parseFloat(order.orderTotal).toFixed(2)}
+                            </p>
                           </div>
                         </div>
                       </div>
@@ -509,13 +648,17 @@ export default function CustomerProfilePage() {
             </div>
           )}
 
-          {activeTab === 'settings' && (
+          {activeTab === "settings" && (
             <div className="space-y-6">
-              <h3 className="text-2xl font-bold text-gray-800 mb-6">Account Settings</h3>
-              
+              <h3 className="text-2xl font-bold text-gray-800 mb-6">
+                Account Settings
+              </h3>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-gray-50 rounded-xl p-6">
-                  <h4 className="text-lg font-semibold text-gray-800 mb-4">Quick Actions</h4>
+                  <h4 className="text-lg font-semibold text-gray-800 mb-4">
+                    Quick Actions
+                  </h4>
                   <div className="space-y-3">
                     <Link
                       href="/perfumes"
@@ -536,7 +679,9 @@ export default function CustomerProfilePage() {
                 </div>
 
                 <div className="bg-gray-50 rounded-xl p-6">
-                  <h4 className="text-lg font-semibold text-gray-800 mb-4">Account Security</h4>
+                  <h4 className="text-lg font-semibold text-gray-800 mb-4">
+                    Account Security
+                  </h4>
                   <div className="space-y-3">
                     <button className="flex items-center gap-3 p-3 rounded-lg hover:bg-white transition-colors w-full text-left">
                       <User className="w-5 h-5 text-blue-500" />
@@ -567,16 +712,16 @@ export default function CustomerProfilePage() {
           <div
             key={toast.id}
             className={`flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg transform transition-all duration-300 ${
-              toast.type === 'success' 
-                ? 'bg-green-500 text-white' 
-                : toast.type === 'error' 
-                ? 'bg-red-500 text-white' 
-                : 'bg-blue-500 text-white'
+              toast.type === "success"
+                ? "bg-green-500 text-white"
+                : toast.type === "error"
+                ? "bg-red-500 text-white"
+                : "bg-blue-500 text-white"
             }`}
           >
-            {toast.type === 'success' && <CheckCircle className="w-5 h-5" />}
-            {toast.type === 'error' && <AlertCircle className="w-5 h-5" />}
-            {toast.type === 'info' && <AlertCircle className="w-5 h-5" />}
+            {toast.type === "success" && <CheckCircle className="w-5 h-5" />}
+            {toast.type === "error" && <AlertCircle className="w-5 h-5" />}
+            {toast.type === "info" && <AlertCircle className="w-5 h-5" />}
             <span className="font-medium">{toast.message}</span>
             <button
               onClick={() => removeToast(toast.id)}
